@@ -25,21 +25,22 @@ class AutoencoderNet(nn.Module):
     def __init__(self, input_dim: int, hidden_dims: list, dropout: float = 0.2):
         super().__init__()
 
-        # Encoder
+        # Encoder: input_dim → hidden_dims[0] → ... → hidden_dims[-1]
         enc_layers = []
         in_dim = input_dim
-        for h in hidden_dims[: len(hidden_dims) // 2 + 1]:
+        for h in hidden_dims:
             enc_layers += [nn.Linear(in_dim, h), nn.BatchNorm1d(h), nn.ReLU(), nn.Dropout(dropout)]
             in_dim = h
         self.encoder = nn.Sequential(*enc_layers)
 
-        # Decoder (mirror)
+        # Decoder: mirror path back to input_dim
+        dec_dims = list(reversed(hidden_dims[:-1])) + [input_dim]
         dec_layers = []
-        dec_dims = hidden_dims[len(hidden_dims) // 2 + 1 :] + [input_dim]
         for h in dec_dims:
             dec_layers += [nn.Linear(in_dim, h), nn.ReLU()]
             in_dim = h
-        dec_layers[-1] = nn.Linear(dec_dims[-2] if len(dec_dims) > 1 else hidden_dims[len(hidden_dims)//2], input_dim)
+        # Replace last ReLU with identity for output layer
+        dec_layers[-1] = nn.Identity()
         self.decoder = nn.Sequential(*dec_layers)
 
     def forward(self, x):
