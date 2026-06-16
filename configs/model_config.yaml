@@ -1,0 +1,62 @@
+isolation_forest:
+  n_estimators: 200
+  max_samples: auto
+  contamination: 0.08
+  max_features: 1.0
+  bootstrap: false
+  random_state: 42
+  features:
+    - cpu_percent
+    - mem_percent
+    - disk_read_mbps
+    - disk_write_mbps
+    - net_in_mbps
+    - net_out_mbps
+    - open_connections
+    - process_count
+
+autoencoder:
+  input_dim: 8
+  hidden_dims: [64, 32, 16, 32, 64]
+  latent_dim: 8
+  dropout: 0.2
+  learning_rate: 0.001
+  batch_size: 64
+  epochs: 50
+  threshold_percentile: 95
+  random_state: 42
+
+bert_log:
+  model_name: bert-base-uncased
+  max_length: 128
+  batch_size: 32
+  epochs: 5
+  learning_rate: 2.0e-5
+  warmup_ratio: 0.1
+  weight_decay: 0.01
+  num_labels: 2
+  threshold: 0.5
+  random_state: 42
+
+network:
+  n_estimators: 200
+  contamination: 0.08
+  random_state: 42
+  features:
+    - bytes_out
+    - bytes_in
+    - packets
+    - duration_ms
+    - src_port
+    - dst_port
+
+training:
+  test_size: 0.2
+  val_size: 0.1
+  random_state: 42
+  model_save_dir: ml/saved_models
+
+paths:
+  logs_data: data/simulated/logs.jsonl
+  metrics_data: data/simulated/metrics.jsonl
+  network_data: data/simulated/network.jsonl
