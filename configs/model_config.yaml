@@ -17,8 +17,8 @@ isolation_forest:
 
 autoencoder:
   input_dim: 8
-  hidden_dims: [64, 32, 16, 32, 64]
-  latent_dim: 8
+  hidden_dims: [64, 32, 16]
+  latent_dim: 16
   dropout: 0.2
   learning_rate: 0.001
   batch_size: 64
