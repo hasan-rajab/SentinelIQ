@@ -1,0 +1,27 @@
+{
+  "feature_cols": [
+    "bytes_out",
+    "bytes_in",
+    "packets",
+    "duration_ms",
+    "src_port",
+    "dst_port"
+  ],
+  "threshold": 0.5642542987028942,
+  "config": {
+    "n_estimators": 200,
+    "max_samples": "auto",
+    "contamination": 0.08,
+    "max_features": 1.0,
+    "bootstrap": false,
+    "random_state": 42,
+    "features": [
+      "bytes_out",
+      "bytes_in",
+      "packets",
+      "duration_ms",
+      "src_port",
+      "dst_port"
+    ]
+  }
+}
