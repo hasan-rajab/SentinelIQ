@@ -83,7 +83,7 @@ class SentinelAutoencoder:
         X = self.scaler.fit_transform(self._extract(df))
         X_t = self._to_tensor(X)
         dataset = TensorDataset(X_t, X_t)
-        loader = DataLoader(dataset, batch_size=self.config.get("batch_size", 64), shuffle=True)
+        loader = DataLoader(dataset, batch_size=self.config.get("batch_size", 64), shuffle=True, drop_last=True)
 
         epochs = self.config.get("epochs", 50)
         print(f"[Autoencoder] Training on {len(df)} samples | device={self.device} | epochs={epochs}")
