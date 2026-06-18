@@ -1,0 +1,9 @@
+{
+  "weights": {
+    "isolation_forest": 0.3,
+    "autoencoder": 0.3,
+    "bert_log": 0.4
+  },
+  "strategy": "weighted_avg",
+  "threshold": 0.15000000000000002
+}
