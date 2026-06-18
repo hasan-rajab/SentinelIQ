@@ -221,7 +221,7 @@ class MitreMapper:
     def map_to_dict(self, anomaly_type: str) -> dict:
         return asdict(self.map(anomaly_type))
 
-    def map_dataframe(self, df: pd.DataFrame, anomaly_type_col: str = "anomaly_type") -> pd.DataFrame:
+    def map_dataframe(self, df, anomaly_type_col: str = "anomaly_type"):
         import pandas as pd
         mapped = df[anomaly_type_col].apply(lambda x: self.map_to_dict(x) if x else asdict(UNKNOWN_MAPPING))
         mapped_df = pd.json_normalize(mapped)
