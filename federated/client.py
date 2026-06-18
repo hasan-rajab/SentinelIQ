@@ -74,6 +74,10 @@ class SentinelClient(fl.client.NumPyClient):
     def evaluate(self, parameters: list, config: dict) -> tuple:
         set_model_params(self.model.net, parameters)
 
+        # Scaler is local to each client and never shared — fit it here if needed
+        if not hasattr(self.model.scaler, "mean_"):
+            self.model.scaler.fit(self.normal_df[self.feature_cols].fillna(0).values)
+
         scores = self.model.score(self.df)
         if self.model.threshold is None:
             self.model.threshold = float(np.percentile(scores, 92))
@@ -92,9 +96,9 @@ class SentinelClient(fl.client.NumPyClient):
         return loss, len(self.df), {"roc_auc": roc_auc, "f1": f1}
 
     def _compute_loss(self) -> float:
-        X = self.model.scaler.transform(self.normal_df[self.feature_cols].fillna(0).values) \
-            if hasattr(self.model.scaler, "mean_") else \
-            self.normal_df[self.feature_cols].fillna(0).values
+        if not hasattr(self.model.scaler, "mean_"):
+            self.model.scaler.fit(self.normal_df[self.feature_cols].fillna(0).values)
+        X = self.model.scaler.transform(self.normal_df[self.feature_cols].fillna(0).values)
         X_t = torch.FloatTensor(X).to(self.model.device)
         errors = self.model._reconstruction_errors(X_t)
         return float(np.mean(errors))
