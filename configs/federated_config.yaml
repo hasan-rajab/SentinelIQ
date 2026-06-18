@@ -1,0 +1,20 @@
+server:
+  rounds: 5
+  min_clients: 3
+  min_available_clients: 3
+  port: 8080
+
+client:
+  n_clients: 3
+  hidden_dims: [64, 32, 16]
+  dropout: 0.2
+  learning_rate: 0.001
+  batch_size: 32
+  epochs: 5            # local epochs per federated round
+  threshold_percentile: 95
+
+simulation:
+  num_supernodes: 3
+  client_resources:
+    num_cpus: 1
+    num_gpus: 0.0
