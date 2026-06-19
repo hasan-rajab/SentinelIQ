@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+*.ipynb_checkpoints
+
+# Large model weights (use Kaggle Datasets / Hugging Face Hub instead)
+ml/saved_models/bert_log/
+ml/saved_models/federated/
+*.safetensors
+*.pt
+*.bin
+
+# Data
+data/simulated/*.jsonl
+data/raw/*
+data/processed/*
+
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.env*.local
+
+# Env files
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log
