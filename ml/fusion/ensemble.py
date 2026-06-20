@@ -46,6 +46,24 @@ class SentinelEnsemble:
             return np.zeros_like(scores)
         return (scores - mn) / (mx - mn)
 
+    def fuse_network(
+        self,
+        if_scores: np.ndarray,
+        ae_scores: np.ndarray,
+        if_weight: float = 0.5,
+        ae_weight: float = 0.5,
+    ) -> np.ndarray:
+        """
+        Dedicated fusion for network modality: combines Isolation Forest
+        and Autoencoder scores. Kept separate from the metrics/log fuse()
+        path since network has its own weighting and was added later
+        to close the recall gap found in production validation.
+        """
+        assert abs(if_weight + ae_weight - 1.0) < 1e-6, "Network weights must sum to 1.0"
+        if_norm = self._normalize(if_scores)
+        ae_norm = self._normalize(ae_scores)
+        return if_weight * if_norm + ae_weight * ae_norm
+
     def fuse(
         self,
         if_scores: Optional[np.ndarray] = None,

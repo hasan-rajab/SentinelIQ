@@ -26,6 +26,17 @@ autoencoder:
   threshold_percentile: 95
   random_state: 42
 
+autoencoder_network:
+  input_dim: 6
+  hidden_dims: [32, 16, 8]
+  latent_dim: 8
+  dropout: 0.2
+  learning_rate: 0.001
+  batch_size: 64
+  epochs: 50
+  threshold_percentile: 90
+  random_state: 42
+
 bert_log:
   model_name: bert-base-uncased
   max_length: 128
