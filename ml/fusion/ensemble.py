@@ -40,7 +40,11 @@ class SentinelEnsemble:
         self.threshold = threshold
 
     def _normalize(self, scores: np.ndarray) -> np.ndarray:
-        """Min-max normalize scores to [0, 1]."""
+        """Min-max normalize scores to [0, 1]. Single-value arrays pass through
+        unchanged since there's no batch range to normalize against (this is
+        the live single-record inference path)."""
+        if len(scores) == 1:
+            return scores
         mn, mx = scores.min(), scores.max()
         if mx - mn < 1e-8:
             return np.zeros_like(scores)
