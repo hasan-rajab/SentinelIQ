@@ -5,5 +5,5 @@
     "bert_log": 0.4
   },
   "strategy": "weighted_avg",
-  "threshold": 0.5
+  "threshold": 0.15000000000000002
 }

@@ -1,0 +1,32 @@
+[
+  {
+    "round": 1,
+    "n_clients": 3,
+    "avg_loss": 0.23910016814867655,
+    "total_examples": 1671
+  },
+  {
+    "round": 2,
+    "n_clients": 3,
+    "avg_loss": 0.16497012972831726,
+    "total_examples": 1671
+  },
+  {
+    "round": 3,
+    "n_clients": 3,
+    "avg_loss": 0.095616914331913,
+    "total_examples": 1671
+  },
+  {
+    "round": 4,
+    "n_clients": 3,
+    "avg_loss": 0.07756219059228897,
+    "total_examples": 1671
+  },
+  {
+    "round": 5,
+    "n_clients": 3,
+    "avg_loss": 0.07493219027916591,
+    "total_examples": 1671
+  }
+]

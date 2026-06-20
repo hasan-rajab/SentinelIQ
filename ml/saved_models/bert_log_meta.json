@@ -1,0 +1,15 @@
+{
+  "threshold": 0.5,
+  "config": {
+    "model_name": "bert-base-uncased",
+    "max_length": 128,
+    "batch_size": 32,
+    "epochs": 5,
+    "learning_rate": 2e-05,
+    "warmup_ratio": 0.1,
+    "weight_decay": 0.01,
+    "num_labels": 2,
+    "threshold": 0.5,
+    "random_state": 42
+  }
+}

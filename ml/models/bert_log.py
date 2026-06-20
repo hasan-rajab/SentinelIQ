@@ -13,7 +13,7 @@ from typing import Optional
 import torch
 from torch.utils.data import Dataset, DataLoader
 from transformers import (
-    BertTokenizer,
+    AutoTokenizer,
     BertForSequenceClassification,
     get_linear_schedule_with_warmup,
 )
@@ -58,7 +58,7 @@ class SentinelBertLog:
         self.is_fitted = False
 
         print(f"[BertLog] Loading tokenizer: {self.model_name}")
-        self.tokenizer = BertTokenizer.from_pretrained(self.model_name)
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
         self.model = BertForSequenceClassification.from_pretrained(
             self.model_name,
             num_labels=config.get("num_labels", 2),
@@ -199,7 +199,7 @@ class SentinelBertLog:
             meta = json.load(f)
         obj = cls(config=meta["config"])
         obj.model = BertForSequenceClassification.from_pretrained(f"{save_dir}/{name}").to(obj.device)
-        obj.tokenizer = BertTokenizer.from_pretrained(f"{save_dir}/{name}")
+        obj.tokenizer = AutoTokenizer.from_pretrained(f"{save_dir}/{name}")
         obj.threshold = meta["threshold"]
         obj.is_fitted = True
         print(f"[BertLog] Loaded from {save_dir}/{name}/")
