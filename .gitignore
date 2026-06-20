@@ -43,3 +43,6 @@ __pycache__/
 *.joblib copy
 *.json copy
 *.pt copy
+__pycache__/
+ml/saved_models/*.json
+ml/saved_models/*.joblib
