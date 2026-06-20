@@ -191,6 +191,8 @@ class AnomalyService:
                 fused = float(self.ensemble.fuse_network(
                     if_scores=np.array([if_score]),
                     ae_scores=np.array([ae_score]),
+                    if_threshold=self.if_network.threshold,
+                    ae_threshold=self.ae_network.threshold,
                 )[0])
             else:
                 # Fallback: IF-only scoring if network autoencoder isn't trained yet
