@@ -23,6 +23,7 @@ from ml.models.bert_log import SentinelBertLog
 from ml.fusion.ensemble import SentinelEnsemble
 from ml.explainability.shap_explainer import SentinelShapExplainer
 from ml.explainability.mitre_mapper import MitreMapper
+from ml.features.network_features import add_network_features
 
 
 class AnomalyService:
@@ -185,6 +186,7 @@ class AnomalyService:
             fused = scores["bert_score"] if scores["bert_score"] is not None else 0.0
         elif modality == "network":
             df = pd.DataFrame([record])
+            df = add_network_features(df)
             if_score = float(self.if_network.score(df)[0]) if self.if_network else 0.0
             if self.ae_network is not None:
                 ae_score = float(self.ae_network.score(df)[0])

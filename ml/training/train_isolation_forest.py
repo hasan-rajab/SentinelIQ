@@ -14,6 +14,7 @@ from sklearn.model_selection import train_test_split
 import sys
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from models.isolation_forest import SentinelIsolationForest
+from features.network_features import add_network_features
 
 
 def load_jsonl(path: str) -> pd.DataFrame:
@@ -71,6 +72,9 @@ def train_network(cfg: dict, data_path: str, save_dir: str):
 
     df = load_jsonl(data_path)
     print(f"  Loaded {len(df)} records | anomalies={df['is_anomaly'].sum()}")
+    df = add_network_features(df)
+    print(f"  Engineered features added: bytes_out_in_ratio, bytes_per_sec, "
+          f"bytes_per_packet, is_common_port")
 
     feature_cols = cfg["network"]["features"]
     y = df["is_anomaly"].astype(int).values

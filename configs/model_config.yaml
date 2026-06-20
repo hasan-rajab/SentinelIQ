@@ -27,7 +27,7 @@ autoencoder:
   random_state: 42
 
 autoencoder_network:
-  input_dim: 6
+  input_dim: 10
   hidden_dims: [32, 16, 8]
   latent_dim: 8
   dropout: 0.2
@@ -60,6 +60,10 @@ network:
     - duration_ms
     - src_port
     - dst_port
+    - bytes_out_in_ratio
+    - bytes_per_sec
+    - bytes_per_packet
+    - is_common_port
 
 training:
   test_size: 0.2
