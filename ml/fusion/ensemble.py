@@ -54,19 +54,40 @@ class SentinelEnsemble:
         self,
         if_scores: np.ndarray,
         ae_scores: np.ndarray,
+        if_threshold: float,
+        ae_threshold: float,
         if_weight: float = 0.5,
         ae_weight: float = 0.5,
     ) -> np.ndarray:
         """
         Dedicated fusion for network modality: combines Isolation Forest
-        and Autoencoder scores. Kept separate from the metrics/log fuse()
-        path since network has its own weighting and was added later
-        to close the recall gap found in production validation.
+        and Autoencoder scores.
+
+        IMPORTANT: these two scores live on completely different scales —
+        IF's score_samples() is roughly bounded, but the Autoencoder's raw
+        MSE reconstruction error is unbounded and scales with feature
+        magnitude (network bytes_out can be in the millions). Naively
+        averaging raw values lets the AE error dominate completely.
+
+        Instead, each score is converted to a ratio relative to its own
+        model's pre-calibrated threshold: a value of 1.0 means "exactly at
+        the anomaly threshold", >1.0 means "more anomalous than typical
+        flagged cases". This keeps both signals on a comparable scale
+        without needing batch statistics (works for single-record
+        live inference, unlike min-max normalization).
         """
         assert abs(if_weight + ae_weight - 1.0) < 1e-6, "Network weights must sum to 1.0"
-        if_norm = self._normalize(if_scores)
-        ae_norm = self._normalize(ae_scores)
-        return if_weight * if_norm + ae_weight * ae_norm
+
+        if_ratio = if_scores / max(if_threshold, 1e-8)
+        ae_ratio = ae_scores / max(ae_threshold, 1e-8)
+
+        # Clip so a single wildly-scaled feature can't blow out the fused score
+        if_ratio = np.clip(if_ratio, 0, 3)
+        ae_ratio = np.clip(ae_ratio, 0, 3)
+
+        fused = if_weight * if_ratio + ae_weight * ae_ratio
+        # Rescale so "at threshold" (ratio sum = 1.0) lands at fused = 0.5
+        return np.clip(fused / 2, 0, 1)
 
     def fuse(
         self,
