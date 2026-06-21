@@ -1,108 +1,314 @@
-SentinelIQ
-AI-native multimodal anomaly intelligence for IT Ops & Cybersecurity
+# SentinelIQ
+
+**AI-native multimodal anomaly intelligence for IT Ops & Cybersecurity**
+
 SentinelIQ ingests logs, system metrics, and network flows in real time, fuses independent ML models into a single anomaly score, explains every alert with SHAP feature attribution and MITRE ATT&CK mapping, and trains collaboratively across multiple nodes without ever sharing raw data.
 
-Why this exists
-Most anomaly detection tools are black boxes — they flag something and leave you guessing why. Most are also single-modality, missing the bigger picture when an attack spans logs, metrics, and network traffic at once. SentinelIQ was built to solve both problems, with privacy-preserving federated training as a third differentiator for organizations that can't centralize sensitive data.
+---
 
-Architecture
+## Why This Exists
+
+Most anomaly detection tools are black boxes—they flag something and leave you guessing why. Most are also single-modality, missing the bigger picture when an attack spans logs, metrics, and network traffic at once.
+
+SentinelIQ was built to solve both problems, with privacy-preserving federated training as a third differentiator for organizations that cannot centralize sensitive data.
+
+---
+
+## Architecture
+
+```text
 ┌─────────────┐     ┌──────────────────────────┐     ┌─────────────────┐
-│  Simulated  │────▶│       ML Layer            │────▶│  Fusion + SHAP  │
-│  Data       │     │  XGBoost + AE (network)  │     │  + MITRE ATT&CK │
-│  Streams    │     │  AE only   (metrics)     │     │  Explainability │
-│             │     │  BERT      (logs)        │     │                 │
+│  Simulated  │────▶│       ML Layer           │────▶│  Fusion + SHAP  │
+│  Data       │     │  XGBoost + AE (network) │     │  + MITRE ATT&CK │
+│  Streams    │     │  AE only   (metrics)    │     │  Explainability │
+│             │     │  BERT      (logs)       │     │                 │
 └─────────────┘     └──────────────────────────┘     └────────┬────────┘
                                                                │
       ┌────────────────────────────────────────────────────────┘
       ▼
 ┌─────────────┐     ┌──────────────┐     ┌──────────────────┐
-│  FastAPI    │────▶│  WebSocket   │────▶│  Next.js          │
+│  FastAPI    │────▶│  WebSocket   │────▶│  Next.js         │
 │  Backend    │     │  Live Stream │     │  SOC Dashboard   │
 └─────────────┘     └──────────────┘     └──────────────────┘
 
       Federated Layer (Flower): 3 nodes train collaboratively,
       only model weights are exchanged — never raw data.
+```
 
-Tech Stack
-LayerTechnologyData simulationPython (custom log/metric/network generators)ML modelsXGBoost (network classifier), PyTorch (Autoencoder), HuggingFace Transformers (fine-tuned BERT), scikit-learn (Isolation Forest)ExplainabilitySHAP, custom MITRE ATT&CK mapperFederated learningFlower (flwr)BackendFastAPI, WebSocketsFrontendNext.js 14, TypeScript, Tailwind CSSTrainingKaggle (free T4 GPU tier)OrchestrationDocker Compose, Kafka
+---
 
-Project Structure
+## Tech Stack
+
+| Layer              | Technology                                                                       |
+| ------------------ | -------------------------------------------------------------------------------- |
+| Data Simulation    | Python (custom log, metric, and network generators)                              |
+| ML Models          | XGBoost, PyTorch Autoencoder, Hugging Face Transformers (BERT), Isolation Forest |
+| Explainability     | SHAP, custom MITRE ATT&CK mapper                                                 |
+| Federated Learning | Flower (flwr)                                                                    |
+| Backend            | FastAPI, WebSockets                                                              |
+| Frontend           | Next.js 14, TypeScript, Tailwind CSS                                             |
+| Training           | Kaggle (free T4 GPU tier)                                                        |
+| Orchestration      | Docker Compose, Kafka                                                            |
+
+---
+
+## Project Structure
+
+```text
 sentineliq/
-├── data/simulated/         Synthetic log/metric/network generators
+├── data/
+│   └── simulated/           # Synthetic log, metric, and network generators
 ├── ml/
-│   ├── models/             XGBoost, Autoencoder, BERT, Isolation Forest
-│   ├── training/           CLI training + calibration scripts
-│   ├── fusion/             Ensemble scoring (XGBoost+AE, AE-only paths)
-│   ├── explainability/     SHAP + MITRE ATT&CK mapping
-│   ├── features/           Network feature engineering (15 features)
-│   └── saved_models/       Trained weights (large files excluded from git)
-├── federated/              Flower server, client, simulation runner
-├── backend/                FastAPI app, routes, services, schemas
-├── frontend/               Next.js SOC dashboard
-├── notebooks/              Kaggle training notebooks (01–07)
-├── configs/                YAML configs for models + federated setup
+│   ├── models/              # XGBoost, Autoencoder, BERT, Isolation Forest
+│   ├── training/            # CLI training and calibration scripts
+│   ├── fusion/              # Ensemble scoring logic
+│   ├── explainability/      # SHAP + MITRE ATT&CK mapping
+│   ├── features/            # Network feature engineering
+│   └── saved_models/        # Trained weights (excluded from git)
+├── federated/               # Flower server, client, simulations
+├── backend/                 # FastAPI application
+├── frontend/                # Next.js SOC dashboard
+├── notebooks/               # Kaggle notebooks (01–07)
+├── configs/                 # YAML configurations
 └── docker-compose.yml
+```
 
-Quickstart
-1. Train the models (Kaggle)
-Open notebooks/01 through notebooks/07 in order on Kaggle (free GPU tier). Each notebook clones this repo, generates fresh simulated data, trains, and saves model weights. See notebooks/README.md for Kaggle-specific setup.
-2. Download trained weights
-Models larger than GitHub's 100MB limit (BERT weights) are excluded from the repo. Download them from your Kaggle output and place them in ml/saved_models/:
+---
+
+# Quick Start
+
+## 1. Train the Models (Kaggle)
+
+Open notebooks **01–07** in order using Kaggle's free GPU environment.
+
+Each notebook:
+
+* Clones the repository
+* Generates fresh simulated data
+* Trains the relevant model
+* Saves model artifacts
+
+See `notebooks/README.md` for detailed Kaggle instructions.
+
+---
+
+## 2. Download Trained Weights
+
+Large model files (particularly BERT) exceed GitHub's file size limits and are not included in the repository.
+
+Place downloaded models into:
+
+```text
 ml/saved_models/
 ├── xgboost_network_*
 ├── autoencoder_metrics_*
 ├── autoencoder_network_*
 ├── isolation_forest_metrics_*
 ├── isolation_forest_network_*
-├── bert_log/                  ← download separately, not in git
+├── bert_log/
 ├── bert_log_meta.json
 └── ensemble_config.json
-3. Run locally with Docker
-bashcp .env.example .env
+```
+
+---
+
+## 3. Run with Docker
+
+```bash
+cp .env.example .env
 docker-compose up --build
+```
 
-Backend: http://localhost:8000 (docs at /docs)
-Frontend: http://localhost:3000
-Kafka: localhost:9092
+### Services
 
-4. Run without Docker (development)
-bash# Backend
+| Service            | URL                        |
+| ------------------ | -------------------------- |
+| Backend API        | http://localhost:8000      |
+| Swagger Docs       | http://localhost:8000/docs |
+| Frontend Dashboard | http://localhost:3000      |
+| Kafka              | localhost:9092             |
+
+---
+
+## 4. Run Without Docker
+
+### Backend
+
+```bash
 pip install -r backend/requirements.txt
 uvicorn backend.main:app --reload --port 8000
+```
 
-# Frontend (separate terminal)
+### Frontend
+
+```bash
 cd frontend
 npm install
 npm run dev
+```
 
-Features
+---
 
-Multimodal detection — logs (BERT), metrics (Autoencoder), network flows (supervised XGBoost + Autoencoder ensemble)
-Supervised + unsupervised fusion — XGBoost classifies known attack patterns using labeled data; Autoencoder acts as a safety net for novel/unknown attack shapes via reconstruction error
-Explainable by design — every alert ships with SHAP feature attribution and a MITRE ATT&CK tactic/technique mapping
-Federated learning — train across multiple data-sensitive environments without centralizing raw data (Flower + FedAvg)
-Live SOC dashboard — real-time WebSocket feed, anomaly score waveform, alert triage, federated node topology
-Zero-cost stack — Kaggle GPU training, self-hosted Kafka, free-tier everything
+# Features
+
+### Multimodal Detection
+
+Analyze multiple telemetry sources simultaneously:
+
+* Logs → BERT
+* Metrics → Autoencoder
+* Network flows → XGBoost + Autoencoder Ensemble
+
+### Supervised + Unsupervised Fusion
+
+* XGBoost identifies known attack patterns using labeled data.
+* Autoencoders provide protection against previously unseen attack behavior.
+
+### Explainable by Design
+
+Every alert includes:
+
+* SHAP feature attribution
+* MITRE ATT&CK tactic mapping
+* MITRE ATT&CK technique mapping
+
+### Federated Learning
+
+Train across multiple environments without centralizing sensitive data.
+
+* Flower
+* FedAvg aggregation
+* Model-weight exchange only
+
+### Live SOC Dashboard
+
+Real-time visualization including:
+
+* Live WebSocket feed
+* Anomaly score waveform
+* Alert triage panel
+* Federated node topology
+
+### Zero-Cost Development Stack
+
+* Kaggle GPU training
+* Self-hosted Kafka
+* Open-source tooling
+
+---
+
+# Model Performance
+
+Evaluated on fresh synthetic data not seen during training.
+
+Dataset sizes:
+
+* Network records: 1,142
+* Metric records: 605
+* Log records: 585
+
+| Modality | Model                        | Recall  | Precision | F1 Score |
+| -------- | ---------------------------- | ------- | --------- | -------- |
+| Metrics  | Autoencoder                  | 100.00% | 97.62%    | 0.988    |
+| Network  | XGBoost                      | 85.85%  | 100.00%   | 0.924    |
+| Network  | XGBoost + Autoencoder Fusion | 99.06%  | 100.00%   | 0.995    |
+| Logs     | BERT                         | 100.00% | 100.00%   | 1.000    |
+
+---
+
+## Known Weak Spots
+
+### Lateral Movement
+
+Most difficult attack category due to similarity with legitimate administrative traffic.
+
+### Memory Leak
+
+Gradual memory growth can resemble legitimate high-load workloads, resulting in approximately one missed detection per ~600 records.
+
+---
+
+## Important Note
+
+Performance metrics are based entirely on synthetic simulator-generated data with relatively clean class separation.
+
+Real-world performance will be lower, especially for:
+
+* Low-and-slow attacks
+* Traffic throttling techniques
+* Adversaries intentionally mimicking normal behavior
+
+These results should be treated as **upper-bound research benchmarks**, not production guarantees.
+
+---
+
+# Detection Pipeline
+
+```text
+Network Flow
+    │
+    ▼
+Feature Engineering (15 Features)
+    │
+    ▼
+XGBoost Score
+    │
+    ├───────────────╮
+    ▼               │
+Weighted Fusion     │
+(0.7 / 0.3)         │
+    │               │
+    ▼               │
+Threshold 0.484 ◀───╯
+    │
+    ▼
+Alert
+
+Autoencoder Reconstruction Error
+    │
+    └─────────────────────────────▶ Fusion
 
 
-Model Performance
-Evaluated on fresh synthetic data not seen during training (1,142 network records, 605 metric records, 585 log records).
-ModalityModelRecallPrecisionF1MetricsAutoencoder100%97.62%0.988NetworkXGBoost alone85.85%100%0.924NetworkXGBoost + AE fused99.06%100%0.995LogsBERT100%100%1.000
-Known weak spots:
+Metric Record
+    │
+    ▼
+Autoencoder
+    │
+    ▼
+Threshold 0.743
+    │
+    ▼
+Alert
 
-lateral_movement — hardest attack type; low feature separation from normal admin traffic
-memory_leak — gradual memory growth overlaps with legitimate high-load behavior; 1 irreducible miss per ~600 records
 
-Synthetic data caveat: results are on simulator-generated data with clean class separation. Real-world performance will be lower, particularly for attack types that throttle or mimic normal traffic. These numbers are upper bounds, not production guarantees.
+Log Record
+    │
+    ▼
+BERT Classifier
+    │
+    ▼
+Threshold 0.500
+    │
+    ▼
+Alert
+```
 
-Detection Pipeline
-Network flow ──▶ Feature engineering (15 features) ──▶ XGBoost score ──▶ ╮
-                                                                           weighted fusion (0.7/0.3) ──▶ threshold 0.484 ──▶ Alert
-                                                    Autoencoder recon ──▶ ╯
+---
 
-Metric record ──▶ Autoencoder ──▶ threshold 0.743 ──▶ Alert
+# Future Roadmap
 
-Log record ──▶ BERT classifier ──▶ threshold 0.500 ──▶ Alert
+* Real-world benchmark datasets (CICIDS2017, UNSW-NB15)
+* Online learning and drift adaptation
+* Kubernetes deployment
+* Multi-tenant SOC dashboard
+* Graph-based attack correlation
+* LLM-assisted incident summaries
+* Streaming Kafka ingestion pipeline
 
-License
-MIT
+---
+
+# License
+
+MIT License
+
+Feel free to use, modify, and distribute this project under the terms of the MIT License.
