@@ -9,11 +9,13 @@
     "open_connections",
     "process_count"
   ],
-  "threshold": 0.5210710355895559,
+  "threshold": 0.522222208304018,
+  "score_min": 0.40623309417111847,
+  "score_max": 0.5852623312428691,
   "config": {
     "n_estimators": 200,
     "max_samples": "auto",
-    "contamination": 0.08,
+    "contamination": 0.075,
     "max_features": 1.0,
     "bootstrap": false,
     "random_state": 42,

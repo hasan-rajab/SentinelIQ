@@ -20,6 +20,25 @@ warnings.filterwarnings("ignore", category=UserWarning)
 sys.path.append(str(Path(__file__).resolve().parents[0]))
 
 from backend.services.anomaly_service import AnomalyService
+from ml.features.network_features import add_network_features
+
+
+def _metric_bounds(service):
+    if_bounds = ae_bounds = None
+    if service.if_metrics and service.if_metrics.score_min is not None:
+        if_bounds = (service.if_metrics.score_min, service.if_metrics.score_max)
+    if service.ae and service.ae.score_min is not None:
+        ae_bounds = (service.ae.score_min, service.ae.score_max)
+    return if_bounds, ae_bounds
+
+
+def _network_bounds(service):
+    if_bounds = ae_bounds = None
+    if service.if_network and service.if_network.score_min is not None:
+        if_bounds = (service.if_network.score_min, service.if_network.score_max)
+    if service.ae_network and service.ae_network.score_min is not None:
+        ae_bounds = (service.ae_network.score_min, service.ae_network.score_max)
+    return if_bounds, ae_bounds
 
 
 def load_jsonl(path: str) -> pd.DataFrame:
@@ -57,13 +76,17 @@ def validate_metrics(service: AnomalyService, data_path: str):
     y_pred = []
     fused_scores = []
 
+    if_bounds, ae_bounds = _metric_bounds(service)
+
     for _, row in df.iterrows():
         record = row.to_dict()
         scores = service.score_metric_record(record)
 
         fused = service.ensemble.fuse(
             if_scores=np.array([scores["if_score"]]),
-            ae_scores=np.array([scores["ae_score"]])
+            ae_scores=np.array([scores["ae_score"]]),
+            if_bounds=if_bounds,
+            ae_bounds=ae_bounds,
         )[0]
 
         fused_scores.append(fused)
@@ -99,24 +122,34 @@ def validate_network(service: AnomalyService, data_path: str):
     csv_path = "data/processed/network_test.csv"
     save_csv(df, csv_path)
 
+    df = add_network_features(df)
+    if_bounds, ae_bounds = _network_bounds(service)
+
     y_true = []
     y_pred = []
     fused_scores = []
 
     for _, row in df.iterrows():
         record = row.to_dict()
-
-        # Network uses only IF (no AE for network)
         df_row = pd.DataFrame([record])
+        df_row = add_network_features(df_row)
         if_score = float(service.if_network.score(df_row)[0]) if service.if_network else 0.0
 
-        fused = service.ensemble.fuse(
-            if_scores=np.array([if_score]),
-            ae_scores=None
-        )[0]
+        if service.ae_network is not None:
+            ae_score = float(service.ae_network.score(df_row)[0])
+            fused = float(service.ensemble.fuse_network(
+                if_scores=np.array([if_score]),
+                ae_scores=np.array([ae_score]),
+                if_bounds=if_bounds,
+                ae_bounds=ae_bounds,
+            )[0])
+            threshold = service.ensemble.network_threshold
+        else:
+            fused = if_score
+            threshold = service.if_network.threshold
 
         fused_scores.append(fused)
-        pred = int(fused >= service.ensemble.threshold)
+        pred = int(fused >= threshold)
         y_true.append(row["is_anomaly"])
         y_pred.append(pred)
 

@@ -5,13 +5,24 @@
     "packets",
     "duration_ms",
     "src_port",
-    "dst_port"
+    "dst_port",
+    "bytes_out_in_ratio",
+    "bytes_per_sec",
+    "bytes_per_packet",
+    "is_common_port",
+    "is_suspicious_port",
+    "byte_asymmetry",
+    "packets_per_sec",
+    "payload_density",
+    "is_zero_bytes"
   ],
-  "threshold": 0.5642542987028942,
+  "threshold": 0.5258815641719118,
+  "score_min": 0.37533365517662526,
+  "score_max": 0.747551960778696,
   "config": {
     "n_estimators": 200,
     "max_samples": "auto",
-    "contamination": 0.08,
+    "contamination": 0.075,
     "max_features": 1.0,
     "bootstrap": false,
     "random_state": 42,
@@ -21,7 +32,16 @@
       "packets",
       "duration_ms",
       "src_port",
-      "dst_port"
+      "dst_port",
+      "bytes_out_in_ratio",
+      "bytes_per_sec",
+      "bytes_per_packet",
+      "is_common_port",
+      "is_suspicious_port",
+      "byte_asymmetry",
+      "packets_per_sec",
+      "payload_density",
+      "is_zero_bytes"
     ]
   }
 }

@@ -1,0 +1,1 @@
+self.score_clip = None

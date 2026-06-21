@@ -9,7 +9,10 @@
     "open_connections",
     "process_count"
   ],
-  "threshold": 0.15937095880508423,
+  "threshold": 0.37322142720222473,
+  "score_min": 0.00373621447943151,
+  "score_max": 0.37322142720222473,
+  "score_clip": 0.37322141885757454,
   "config": {
     "input_dim": 8,
     "hidden_dims": [
@@ -21,7 +24,7 @@
     "dropout": 0.2,
     "learning_rate": 0.001,
     "batch_size": 64,
-    "epochs": 50,
+    "epochs": 100,
     "threshold_percentile": 95,
     "random_state": 42
   }

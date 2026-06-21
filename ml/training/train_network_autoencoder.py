@@ -33,8 +33,7 @@ def train(cfg: dict, data_path: str, save_dir: str):
     df = load_jsonl(data_path)
     print(f"  Loaded {len(df)} records | anomalies={df['is_anomaly'].sum()}")
     df = add_network_features(df)
-    print(f"  Engineered features added: bytes_out_in_ratio, bytes_per_sec, "
-          f"bytes_per_packet, is_common_port")
+    print(f"  Engineered features added: {', '.join(cfg['network']['features'])}")
 
     feature_cols = cfg["network"]["features"]
     ae_cfg = {**cfg["autoencoder_network"], "input_dim": len(feature_cols)}
@@ -57,8 +56,9 @@ def train(cfg: dict, data_path: str, save_dir: str):
 
     print(f"  Train normal: {len(X_train_normal)} | Val: {len(X_val)} | Test: {len(X_test_final)}")
 
+    X_val_normal = X_val[y_val == 0]
     model = SentinelAutoencoder(config=ae_cfg, feature_cols=feature_cols)
-    model.fit(X_train_normal, val_df=X_val)
+    model.fit(X_train_normal, val_df=X_val_normal, threshold_df=X_val, min_recall=0.0)
 
     print(f"\n  Evaluating on {len(X_test_final)} test samples...")
     metrics = model.evaluate(X_test_final, y_test_final)

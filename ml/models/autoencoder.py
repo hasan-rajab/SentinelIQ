@@ -17,6 +17,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import (
     classification_report, roc_auc_score,
     average_precision_score, confusion_matrix,
+    precision_recall_curve,
 )
 
 
@@ -58,6 +59,9 @@ class SentinelAutoencoder:
         self.feature_cols = feature_cols
         self.scaler = StandardScaler()
         self.threshold = None
+        self.score_min = None
+        self.score_max = None
+        self.score_clip = None
         self.is_fitted = False
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -79,14 +83,61 @@ class SentinelAutoencoder:
     def _extract(self, df: pd.DataFrame) -> np.ndarray:
         return df[self.feature_cols].fillna(0).values
 
-    def fit(self, df: pd.DataFrame, val_df: pd.DataFrame = None):
+    def _fit_threshold(self, y_true: np.ndarray, scores: np.ndarray, min_recall: float = 0.90):
+        """Set threshold via PR-curve F1 maximization on labeled validation data.
+        Clips at normal-traffic p99*2 so extreme anomaly outliers do not push
+        the threshold above borderline anomalies. min_recall enforces a recall
+        floor so the PR-curve cannot sacrifice borderline cases for precision.
+        """
+        normal_scores = scores[y_true == 0]
+        normal_p99 = float(np.percentile(normal_scores, 99))
+        self.score_clip = normal_p99 * 2
+        scores_clipped = np.clip(scores, 0, self.score_clip)
+
+        precision, recall, thresholds = precision_recall_curve(y_true, scores_clipped)
+        f1_scores = 2 * precision[:-1] * recall[:-1] / (precision[:-1] + recall[:-1] + 1e-8)
+
+        valid = recall[:-1] >= min_recall
+        if valid.any():
+            best_idx = int(np.argmax(np.where(valid, f1_scores, 0.0)))
+        else:
+            best_idx = int(np.argmax(f1_scores))
+
+        self.threshold = float(thresholds[best_idx])
+        self.score_min = float(scores_clipped.min())
+        self.score_max = float(scores_clipped.max())
+        print(
+            f"[Autoencoder] Threshold (PR-F1, min_recall={min_recall})={self.threshold:.5f} | "
+            f"score range=[{self.score_min:.5f}, {self.score_max:.5f}] | "
+            f"normal_p99={normal_p99:.5f} | score_clip={self.score_clip:.5f}"
+        )
+
+    def normalize_score(self, scores: np.ndarray) -> np.ndarray:
+        """Map raw reconstruction errors to [0, 1] using validation score bounds."""
+        if self.score_min is None or self.score_max is None:
+            return scores
+        return np.clip(
+            (scores - self.score_min) / (self.score_max - self.score_min + 1e-8),
+            0, 1,
+        )
+
+    def fit(self, df: pd.DataFrame, val_df: pd.DataFrame = None, threshold_df: pd.DataFrame = None, min_recall: float = 0.90):
         X = self.scaler.fit_transform(self._extract(df))
         X_t = self._to_tensor(X)
         dataset = TensorDataset(X_t, X_t)
         loader = DataLoader(dataset, batch_size=self.config.get("batch_size", 64), shuffle=True, drop_last=True)
 
-        epochs = self.config.get("epochs", 50)
+        epochs = self.config.get("epochs", 100)
         print(f"[Autoencoder] Training on {len(df)} samples | device={self.device} | epochs={epochs}")
+
+        X_val_t = None
+        if val_df is not None:
+            X_val_scaled = self.scaler.transform(self._extract(val_df))
+            X_val_t = self._to_tensor(X_val_scaled)
+
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            self.optimizer, patience=5, factor=0.5,
+        )
 
         self.net.train()
         for epoch in range(1, epochs + 1):
@@ -98,15 +149,40 @@ class SentinelAutoencoder:
                 loss.backward()
                 self.optimizer.step()
                 total_loss += loss.item()
-            if epoch % 10 == 0 or epoch == 1:
-                print(f"  Epoch {epoch:3d}/{epochs} | loss={total_loss/len(loader):.5f}")
 
-        # Set threshold on training reconstruction errors
-        errors = self._reconstruction_errors(X_t)
-        pct = self.config.get("threshold_percentile", 95)
-        self.threshold = np.percentile(errors, pct)
+            val_loss_str = ""
+            if X_val_t is not None:
+                self.net.eval()
+                with torch.no_grad():
+                    val_recon = self.net(X_val_t)
+                    val_loss = self.criterion(val_recon, X_val_t).item()
+                scheduler.step(val_loss)
+                val_loss_str = f" | val_loss={val_loss:.5f}"
+                self.net.train()
+
+            if epoch % 10 == 0 or epoch == 1:
+                print(f"  Epoch {epoch:3d}/{epochs} | loss={total_loss/len(loader):.5f}{val_loss_str}")
+
+        # Threshold calibration — uses threshold_df if provided, else val_df, else percentile on train
+        calib_df = threshold_df if threshold_df is not None else val_df
+
+        if calib_df is not None and "is_anomaly" in calib_df.columns and calib_df["is_anomaly"].sum() > 0:
+            y_calib = calib_df["is_anomaly"].astype(int).values
+            calib_scores = self._reconstruction_errors(
+                self._to_tensor(self.scaler.transform(self._extract(calib_df)))
+            )
+            self._fit_threshold(y_calib, calib_scores, min_recall=min_recall)
+        else:
+            errors = self._reconstruction_errors(self._to_tensor(
+                self.scaler.transform(self._extract(df))
+            ))
+            pct = self.config.get("threshold_percentile", 95)
+            self.threshold = float(np.percentile(errors, pct))
+            self.score_min = float(errors.min())
+            self.score_max = float(errors.max())
+            print(f"[Autoencoder] Fitted | threshold (p{pct})={self.threshold:.5f}")
+
         self.is_fitted = True
-        print(f"[Autoencoder] Fitted | threshold (p{pct})={self.threshold:.5f}")
         return self
 
     def _reconstruction_errors(self, X_tensor: torch.Tensor) -> np.ndarray:
@@ -118,7 +194,10 @@ class SentinelAutoencoder:
 
     def score(self, df: pd.DataFrame) -> np.ndarray:
         X = self.scaler.transform(self._extract(df))
-        return self._reconstruction_errors(self._to_tensor(X))
+        raw = self._reconstruction_errors(self._to_tensor(X))
+        if hasattr(self, "score_clip") and self.score_clip is not None:
+            raw = np.clip(raw, 0, self.score_clip)
+        return raw
 
     def predict(self, df: pd.DataFrame) -> np.ndarray:
         return (self.score(df) >= self.threshold).astype(int)
@@ -160,6 +239,9 @@ class SentinelAutoencoder:
         meta = {
             "feature_cols": self.feature_cols,
             "threshold": float(self.threshold),
+            "score_min": self.score_min,
+            "score_max": self.score_max,
+            "score_clip": self.score_clip,
             "config": self.config,
         }
         with open(f"{save_dir}/{name}_meta.json", "w") as f:
@@ -174,6 +256,9 @@ class SentinelAutoencoder:
         obj.net.load_state_dict(torch.load(f"{save_dir}/{name}_weights.pt", map_location=obj.device))
         obj.scaler = joblib.load(f"{save_dir}/{name}_scaler.joblib")
         obj.threshold = meta["threshold"]
+        obj.score_min = meta.get("score_min")
+        obj.score_max = meta.get("score_max")
+        obj.score_clip = meta.get("score_clip")
         obj.is_fitted = True
         print(f"[Autoencoder] Loaded from {save_dir}/{name}_*")
         return obj

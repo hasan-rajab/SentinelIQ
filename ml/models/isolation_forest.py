@@ -34,13 +34,15 @@ class SentinelIsolationForest:
         self.model = IsolationForest(
             n_estimators=config.get("n_estimators", 200),
             max_samples=config.get("max_samples", "auto"),
-            contamination=config.get("contamination", 0.08),
+            contamination=config.get("contamination", 0.075),
             max_features=config.get("max_features", 1.0),
             bootstrap=config.get("bootstrap", False),
             random_state=config.get("random_state", 42),
             n_jobs=-1,
         )
         self.threshold = None
+        self.score_min = None
+        self.score_max = None
         self.is_fitted = False
 
     def _extract_features(self, df: pd.DataFrame) -> np.ndarray:
@@ -56,9 +58,20 @@ class SentinelIsolationForest:
         # Compute anomaly scores on training data to set threshold
         scores = -self.model.score_samples(X_scaled)   # higher = more anomalous
         self.threshold = np.percentile(scores, 92)
+        self.score_min = float(scores.min())
+        self.score_max = float(scores.max())
         self.is_fitted = True
         print(f"[IsolationForest] Fitted on {len(df)} samples | threshold={self.threshold:.4f}")
         return self
+
+    def normalize_score(self, scores: np.ndarray) -> np.ndarray:
+        """Map raw anomaly scores to [0, 1] using training score bounds."""
+        if self.score_min is None or self.score_max is None:
+            return scores
+        return np.clip(
+            (scores - self.score_min) / (self.score_max - self.score_min + 1e-8),
+            0, 1,
+        )
 
     def predict(self, df: pd.DataFrame) -> np.ndarray:
         """Returns binary labels: 1 = anomaly, 0 = normal."""
@@ -111,6 +124,8 @@ class SentinelIsolationForest:
         meta = {
             "feature_cols": self.feature_cols,
             "threshold": float(self.threshold),
+            "score_min": self.score_min,
+            "score_max": self.score_max,
             "config": self.config,
         }
         with open(f"{save_dir}/{name}_meta.json", "w") as f:
@@ -125,6 +140,8 @@ class SentinelIsolationForest:
         obj.model = joblib.load(f"{save_dir}/{name}_model.joblib")
         obj.scaler = joblib.load(f"{save_dir}/{name}_scaler.joblib")
         obj.threshold = meta["threshold"]
+        obj.score_min = meta.get("score_min")
+        obj.score_max = meta.get("score_max")
         obj.is_fitted = True
         print(f"[IsolationForest] Loaded from {save_dir}/{name}_*")
         return obj

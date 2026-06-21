@@ -69,24 +69,10 @@ for p in [50, 70, 80, 85, 90, 95, 99]:
 # Best threshold search
 print("\nSearching for optimal threshold...")
 best_f1 = 0
-best_threshold = 0.5
-for t in np.arange(0.1, 0.9, 0.05):
-    y_pred = (fused_scores >= t).astype(int)
-    tn, fp, fn, tp = ((y_pred == 0) & (y_true == 0)).sum(), \
-                     ((y_pred == 1) & (y_true == 0)).sum(), \
-                     ((y_pred == 0) & (y_true == 1)).sum(), \
-                     ((y_pred == 1) & (y_true == 1)).sum()
-    precision = tp / (tp + fp) if (tp + fp) > 0 else 0
-    recall = tp / (tp + fn) if (tp + fn) > 0 else 0
-    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
-    if f1 > best_f1:
-        best_f1 = f1
-        best_threshold = t
-        best_metrics = (precision, recall, f1, tn, fp, fn, tp)
+threshold = service.ensemble.threshold
+y_pred = (scores >= threshold).astype(int)
 
-print(f"\nBest threshold: {best_threshold:.2f}")
-print(f"  Precision: {best_metrics[0]:.4f}, Recall: {best_metrics[1]:.4f}, F1: {best_metrics[2]:.4f}")
-print(f"  TN={best_metrics[3]}, FP={best_metrics[4]}, FN={best_metrics[5]}, TP={best_metrics[6]}")
+
 
 # Prediction distribution with current threshold
 print(f"\nWith current threshold ({service.ensemble.threshold}):")
@@ -133,24 +119,8 @@ for p in [50, 70, 80, 85, 90, 95, 99]:
 # Best threshold search for network
 print("\nSearching for optimal threshold...")
 best_f1 = 0
-best_threshold = 0.5
-for t in np.arange(0.1, 0.9, 0.05):
-    y_pred = (net_fused_scores >= t).astype(int)
-    tn, fp, fn, tp = ((y_pred == 0) & (net_y_true == 0)).sum(), \
-                     ((y_pred == 1) & (net_y_true == 0)).sum(), \
-                     ((y_pred == 0) & (net_y_true == 1)).sum(), \
-                     ((y_pred == 1) & (net_y_true == 1)).sum()
-    precision = tp / (tp + fp) if (tp + fp) > 0 else 0
-    recall = tp / (tp + fn) if (tp + fn) > 0 else 0
-    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0
-    if f1 > best_f1:
-        best_f1 = f1
-        best_threshold = t
-        best_metrics = (precision, recall, f1, tn, fp, fn, tp)
 
-print(f"\nBest threshold: {best_threshold:.2f}")
-print(f"  Precision: {best_metrics[0]:.4f}, Recall: {best_metrics[1]:.4f}, F1: {best_metrics[2]:.4f}")
-print(f"  TN={best_metrics[3]}, FP={best_metrics[4]}, FN={best_metrics[5]}, TP={best_metrics[6]}")
+
 
 # --- LOGS ---
 print("\n" + "=" * 60)

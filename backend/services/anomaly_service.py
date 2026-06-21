@@ -20,6 +20,7 @@ sys.path.append(str(Path(__file__).resolve().parents[2]))
 from ml.models.isolation_forest import SentinelIsolationForest
 from ml.models.autoencoder import SentinelAutoencoder
 from ml.models.bert_log import SentinelBertLog
+from ml.models.xgboost_network import SentinelXGBoost
 from ml.fusion.ensemble import SentinelEnsemble
 from ml.explainability.shap_explainer import SentinelShapExplainer
 from ml.explainability.mitre_mapper import MitreMapper
@@ -49,6 +50,7 @@ class AnomalyService:
             "isolation_forest_network": False,
             "autoencoder": False,
             "autoencoder_network": False,
+            "xgboost_network": False,
             "bert_log": False,
             "ensemble": False,
         }
@@ -57,6 +59,7 @@ class AnomalyService:
         self.if_network: Optional[SentinelIsolationForest] = None
         self.ae: Optional[SentinelAutoencoder] = None
         self.ae_network: Optional[SentinelAutoencoder] = None
+        self.xgb_network: Optional[SentinelXGBoost] = None
         self.bert: Optional[SentinelBertLog] = None
         self.ensemble: Optional[SentinelEnsemble] = None
         self.shap_explainer: Optional[SentinelShapExplainer] = None
@@ -99,6 +102,13 @@ class AnomalyService:
         except FileNotFoundError:
             print("[AnomalyService] WARNING: autoencoder_network not found "
                   "(network detection will fall back to Isolation Forest only)")
+
+        try:
+            self.xgb_network = SentinelXGBoost.load(self.model_dir, name="xgboost_network")
+            self.models_loaded["xgboost_network"] = True
+        except FileNotFoundError:
+            print("[AnomalyService] WARNING: xgboost_network not found "
+                  "(network detection will use Isolation Forest + Autoencoder fallback)")
 
         try:
             self.bert = SentinelBertLog.load(self.model_dir, name="bert_log")
@@ -152,13 +162,12 @@ class AnomalyService:
             print(f"[AnomalyService] WARNING: SHAP background fit failed: {e}")
 
     def score_metric_record(self, record: dict) -> dict:
-        """Score a single metric record through IF + Autoencoder."""
+        """Score a single metric record through Autoencoder only.
+        IF is loaded but not used for scoring — AE alone has better
+        precision on metrics data (IF generates excessive false positives)."""
         df = pd.DataFrame([record])
-
-        if_score = float(self.if_metrics.score(df)[0]) if self.if_metrics else None
         ae_score = float(self.ae.score(df)[0]) if self.ae else None
-
-        return {"if_score": if_score, "ae_score": ae_score}
+        return {"ae_score": ae_score}
 
     def score_log_record(self, record: dict) -> dict:
         """Score a single log record through BERT."""
@@ -177,18 +186,30 @@ class AnomalyService:
 
         if modality == "metric":
             scores = self.score_metric_record(record)
-            fused = self.ensemble.fuse(
-                if_scores=np.array([scores["if_score"]]) if scores["if_score"] is not None else None,
-                ae_scores=np.array([scores["ae_score"]]) if scores["ae_score"] is not None else None,
-            )[0]
+            # AE score is already calibrated via PR-curve at training time.
+            # Skip ensemble fusion for metrics — min-max normalization
+            # collapses normal scores to zero when anomaly scores are in the
+            # hundreds of thousands, making the fused threshold meaningless.
+            fused = scores["ae_score"] if scores["ae_score"] is not None else 0.0
         elif modality == "log":
             scores = self.score_log_record(record)
             fused = scores["bert_score"] if scores["bert_score"] is not None else 0.0
         elif modality == "network":
             df = pd.DataFrame([record])
             df = add_network_features(df)
-            if_score = float(self.if_network.score(df)[0]) if self.if_network else 0.0
-            if self.ae_network is not None:
+
+            if self.xgb_network is not None and self.ae_network is not None:
+                # Preferred path: supervised XGBoost + Autoencoder safety net
+                xgb_score = float(self.xgb_network.score(df)[0])
+                ae_score = float(self.ae_network.score(df)[0])
+                fused = float(self.ensemble.fuse_network_xgb(
+                    xgb_scores=np.array([xgb_score]),
+                    ae_scores=np.array([ae_score]),
+                    ae_threshold=self.ae_network.threshold,
+                )[0])
+            elif self.if_network is not None and self.ae_network is not None:
+                # Fallback: Isolation Forest + Autoencoder (pre-XGBoost path)
+                if_score = float(self.if_network.score(df)[0])
                 ae_score = float(self.ae_network.score(df)[0])
                 fused = float(self.ensemble.fuse_network(
                     if_scores=np.array([if_score]),
@@ -196,13 +217,20 @@ class AnomalyService:
                     if_threshold=self.if_network.threshold,
                     ae_threshold=self.ae_network.threshold,
                 )[0])
+            elif self.if_network is not None:
+                # Last resort: IF-only scoring
+                fused = float(self.if_network.score(df)[0])
             else:
-                # Fallback: IF-only scoring if network autoencoder isn't trained yet
-                fused = if_score
+                fused = 0.0
         else:
             raise ValueError(f"Unknown modality: {modality}")
 
-        is_anomaly = record.get("is_anomaly", fused >= self.ensemble.threshold)
+        threshold = (
+            self.ensemble.network_threshold
+            if modality == "network" and hasattr(self.ensemble, "network_threshold")
+            else self.ensemble.threshold
+        )
+        is_anomaly = record.get("is_anomaly", fused >= threshold)
 
         if not is_anomaly:
             return None

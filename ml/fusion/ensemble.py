@@ -29,6 +29,7 @@ class SentinelEnsemble:
         weights: dict = None,
         strategy: str = "weighted_avg",
         threshold: float = 0.5,
+        network_threshold: float = 0.5,
     ):
         self.weights = weights or {
             "isolation_forest": 0.30,
@@ -38,6 +39,7 @@ class SentinelEnsemble:
         assert abs(sum(self.weights.values()) - 1.0) < 1e-6, "Weights must sum to 1.0"
         self.strategy = strategy
         self.threshold = threshold
+        self.network_threshold = network_threshold
 
     def _normalize(self, scores: np.ndarray) -> np.ndarray:
         """Min-max normalize scores to [0, 1]. Single-value arrays pass through
@@ -49,6 +51,37 @@ class SentinelEnsemble:
         if mx - mn < 1e-8:
             return np.zeros_like(scores)
         return (scores - mn) / (mx - mn)
+
+    def fuse_network_xgb(
+        self,
+        xgb_scores: np.ndarray,
+        ae_scores: np.ndarray,
+        ae_threshold: float,
+        xgb_weight: float = 0.7,
+        ae_weight: float = 0.3,
+    ) -> np.ndarray:
+        """
+        Network fusion using supervised XGBoost + Autoencoder, replacing
+        the IF+AE path above. XGBoost handles known attack patterns
+        (trained on labeled data) with high precision; the Autoencoder
+        acts as a safety net for novel/unknown attack shapes it wasn't
+        explicitly trained to classify, via reconstruction error.
+
+        XGBoost's predict_proba output is already a [0,1] probability,
+        so no rescaling is needed there. Only the Autoencoder's unbounded
+        reconstruction error needs the threshold-ratio treatment.
+
+        Weighted 0.7/0.3 toward XGBoost by default since it's the stronger,
+        directly-supervised signal — AE mainly contributes when XGBoost
+        is uncertain about something structurally different from training data.
+        """
+        assert abs(xgb_weight + ae_weight - 1.0) < 1e-6, "Network weights must sum to 1.0"
+
+        xgb_norm = np.clip(xgb_scores, 0, 1)
+        ae_ratio = np.clip(ae_scores / max(ae_threshold, 1e-8), 0, 3) / 3  # rescale to ~[0,1]
+
+        fused = xgb_weight * xgb_norm + ae_weight * ae_ratio
+        return np.clip(fused, 0, 1)
 
     def fuse_network(
         self,

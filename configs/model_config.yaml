@@ -1,7 +1,7 @@
 isolation_forest:
   n_estimators: 200
   max_samples: auto
-  contamination: 0.08
+  contamination: 0.075
   max_features: 1.0
   bootstrap: false
   random_state: 42
@@ -22,7 +22,7 @@ autoencoder:
   dropout: 0.2
   learning_rate: 0.001
   batch_size: 64
-  epochs: 50
+  epochs: 100
   threshold_percentile: 95
   random_state: 42
 
@@ -33,7 +33,7 @@ autoencoder_network:
   dropout: 0.2
   learning_rate: 0.001
   batch_size: 64
-  epochs: 50
+  epochs: 100
   threshold_percentile: 90
   random_state: 42
 
@@ -51,7 +51,7 @@ bert_log:
 
 network:
   n_estimators: 200
-  contamination: 0.08
+  contamination: 0.075
   random_state: 42
   features:
     - bytes_out
@@ -64,6 +64,18 @@ network:
     - bytes_per_sec
     - bytes_per_packet
     - is_common_port
+    - is_suspicious_port
+    - byte_asymmetry
+    - packets_per_sec
+    - payload_density
+    - is_zero_bytes
+
+xgboost_network:
+  n_estimators: 300
+  max_depth: 6
+  learning_rate: 0.05
+  subsample: 0.8
+  colsample_bytree: 0.8
 
 training:
   test_size: 0.2

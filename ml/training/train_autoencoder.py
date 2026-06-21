@@ -55,7 +55,8 @@ def train(cfg: dict, data_path: str, save_dir: str):
     print(f"  Train normal: {len(X_train_normal)} | Val: {len(X_val)} | Test: {len(X_test_final)}")
 
     model = SentinelAutoencoder(config=ae_cfg, feature_cols=feature_cols)
-    model.fit(X_train_normal, val_df=X_val)
+    X_val_normal = X_val[y_val == 0]
+    model.fit(X_train_normal, val_df=X_val_normal, threshold_df=X_val)
 
     print(f"\n  Evaluating on {len(X_test_final)} test samples...")
     metrics = model.evaluate(X_test_final, y_test_final)

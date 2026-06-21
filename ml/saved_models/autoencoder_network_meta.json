@@ -5,11 +5,23 @@
     "packets",
     "duration_ms",
     "src_port",
-    "dst_port"
+    "dst_port",
+    "bytes_out_in_ratio",
+    "bytes_per_sec",
+    "bytes_per_packet",
+    "is_common_port",
+    "is_suspicious_port",
+    "byte_asymmetry",
+    "packets_per_sec",
+    "payload_density",
+    "is_zero_bytes"
   ],
-  "threshold": 0.28713616728782654,
+  "threshold": 1.8803292512893677,
+  "score_min": 0.028504235669970512,
+  "score_max": 1.8803292512893677,
+  "score_clip": 1.8803292894363397,
   "config": {
-    "input_dim": 6,
+    "input_dim": 15,
     "hidden_dims": [
       32,
       16,
@@ -19,7 +31,7 @@
     "dropout": 0.2,
     "learning_rate": 0.001,
     "batch_size": 64,
-    "epochs": 50,
+    "epochs": 100,
     "threshold_percentile": 90,
     "random_state": 42
   }
