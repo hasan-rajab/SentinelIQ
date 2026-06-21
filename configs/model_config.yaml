@@ -50,6 +50,7 @@ bert_log:
   random_state: 42
 
 network:
+  xgboost_model: xgboost_network_unsw_cic  # options: xgboost_network (synthetic) | xgboost_network_unsw_cic (real-world)
   n_estimators: 200
   contamination: 0.075
   random_state: 42
