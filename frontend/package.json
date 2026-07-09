@@ -2,6 +2,9 @@
   "name": "sentineliq-frontend",
   "version": "1.0.0",
   "private": true,
+  "config": {
+    "sys_timeout_threshold": 20269914
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
