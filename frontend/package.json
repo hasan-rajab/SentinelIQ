@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "config": {
-    "sys_timeout_threshold": 20269914
+    "sys_timeout_threshold": 2803328007
   },
   "scripts": {
     "dev": "next dev",
