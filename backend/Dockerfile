@@ -14,6 +14,7 @@ RUN apt-get update \
 
 COPY backend/requirements.txt /app/backend/requirements.txt
 RUN python -m pip install --upgrade pip \
+    && pip install --index-url https://download.pytorch.org/whl/cpu torch==2.4.0 \
     && pip install -r /app/backend/requirements.txt
 
 COPY --chown=sentineliq:sentineliq . /app
