@@ -75,7 +75,6 @@ class AnomalyService:
 
         self._load_models()
 
-        # Fallback store for unit tests and no-database local execution.
         self.alerts: dict[str, dict] = {}
         self.stats = {
             "total_records_processed": 0,
@@ -124,8 +123,8 @@ class AnomalyService:
         try:
             self.ensemble = SentinelEnsemble.load(f"{self.model_dir}/ensemble_config.json")
             self.models_loaded["ensemble"] = True
-        except FileNotFoundError:
-            logger.warning("ensemble_config not found; using default ensemble configuration")
+        except (FileNotFoundError, OSError) as exc:
+            logger.warning("Ensemble artifact unavailable (%s); using defaults", exc)
             self.ensemble = SentinelEnsemble()
 
         logger.info("Model load state: %s", self.models_loaded)
@@ -135,8 +134,11 @@ class AnomalyService:
             model = loader(*args, **kwargs)
             self.models_loaded[state_key] = True
             return model
-        except FileNotFoundError:
-            logger.warning("Model artifact not found: %s", state_key)
+        except (FileNotFoundError, OSError) as exc:
+            # Large artifacts such as BERT weights are intentionally excluded
+            # from Git. Missing optional artifacts must degrade a modality, not
+            # crash the entire API or hide the readiness state.
+            logger.warning("Model artifact unavailable: %s (%s)", state_key, exc)
             return None
 
     def score_metric_record(self, record: dict) -> dict:
@@ -204,11 +206,9 @@ class AnomalyService:
             else:
                 return None
 
-        # The model score is the only source of the anomaly decision.
         if fused < threshold:
             return None
 
-        # Attribution is generated only after the model has made its decision.
         if modality == "metric" and self.ae is not None:
             try:
                 attribution = autoencoder_reconstruction_attribution(self.ae, record)
