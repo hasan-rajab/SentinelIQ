@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from typing import Dict
 
-import numpy as np
 import pandas as pd
 import torch
 
@@ -39,13 +38,15 @@ def xgboost_contribution_attribution(model, df: pd.DataFrame) -> Dict[str, float
     """Return XGBoost per-feature margin contributions for one record.
 
     Uses the booster-native ``pred_contribs`` path. The final bias term is
-    intentionally omitted; only feature contributions are returned.
+    intentionally omitted; only feature contributions are returned. The model
+    was trained from NumPy arrays, so the DMatrix intentionally has no feature
+    names; contributions are mapped back by their stable training-column order.
     """
     from xgboost import DMatrix
 
     x = model.scaler.transform(model._extract(df))
     contributions = model.model.get_booster().predict(
-        DMatrix(x, feature_names=model.feature_cols),
+        DMatrix(x),
         pred_contribs=True,
     )[0][:-1]
 
