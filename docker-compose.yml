@@ -38,6 +38,7 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
     ports:
       - "9092:9092"
       - "29092:29092"
@@ -52,6 +53,7 @@ services:
       - sentineliq-net
 
   backend:
+    image: sentineliq-backend:local
     build:
       context: .
       dockerfile: backend/Dockerfile
@@ -63,6 +65,7 @@ services:
       PYTHONUNBUFFERED: "1"
       SENTINELIQ_CORS_ORIGINS: ${SENTINELIQ_CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}
       SENTINELIQ_DATABASE_URL: postgresql+psycopg://sentineliq:${POSTGRES_PASSWORD:-sentineliq-local}@postgres:5432/sentineliq
+      SENTINELIQ_INGEST_API_KEY: ${SENTINELIQ_INGEST_API_KEY:-sentineliq-local-ingest}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes:
       - ./ml/saved_models:/app/ml/saved_models:ro
@@ -79,6 +82,44 @@ services:
       timeout: 5s
       retries: 5
       start_period: 60s
+    restart: unless-stopped
+    networks:
+      - sentineliq-net
+
+  kafka-consumer:
+    image: sentineliq-backend:local
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: ["python", "-m", "ingestion.kafka_consumer"]
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SENTINELIQ_INGEST_URL: http://backend:8000/ingest
+      SENTINELIQ_INGEST_API_KEY: ${SENTINELIQ_INGEST_API_KEY:-sentineliq-local-ingest}
+      KAFKA_CONSUMER_GROUP: sentineliq-inference-v1
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      kafka:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - sentineliq-net
+
+  demo-producer:
+    image: sentineliq-backend:local
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    command: ["python", "-m", "ingestion.kafka_producer"]
+    profiles: ["demo"]
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SENTINELIQ_DEMO_INTERVAL_SECONDS: ${SENTINELIQ_DEMO_INTERVAL_SECONDS:-0.5}
+    depends_on:
+      kafka:
+        condition: service_healthy
     restart: unless-stopped
     networks:
       - sentineliq-net
