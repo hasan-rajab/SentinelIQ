@@ -1,32 +1,21 @@
-"""
-SentinelIQ — Ensemble Fusion
-Combines anomaly scores from IsolationForest, Autoencoder, and BERT
-into a single unified score with configurable weighting strategy.
-"""
+"""SentinelIQ ensemble fusion utilities."""
 
-import numpy as np
-import pandas as pd
+from __future__ import annotations
+
 import json
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
+import pandas as pd
+
 
 class SentinelEnsemble:
-    """
-    Fuses anomaly scores from three modality-specific models:
-      - isolation_forest : metrics + network (tabular)
-      - autoencoder      : metrics (reconstruction)
-      - bert_log         : logs (sequence classification)
-
-    Strategies:
-      - weighted_avg : weighted average of normalized scores
-      - max          : take the max score across models (high recall)
-      - vote         : majority vote on binary predictions
-    """
+    """Fuse modality/model anomaly scores with calibrated thresholds."""
 
     def __init__(
         self,
-        weights: dict = None,
+        weights: dict | None = None,
         strategy: str = "weighted_avg",
         threshold: float = 0.5,
         network_threshold: float = 0.5,
@@ -36,21 +25,20 @@ class SentinelEnsemble:
             "autoencoder": 0.30,
             "bert_log": 0.40,
         }
-        assert abs(sum(self.weights.values()) - 1.0) < 1e-6, "Weights must sum to 1.0"
+        if abs(sum(self.weights.values()) - 1.0) >= 1e-6:
+            raise ValueError("Weights must sum to 1.0")
         self.strategy = strategy
         self.threshold = threshold
         self.network_threshold = network_threshold
 
     def _normalize(self, scores: np.ndarray) -> np.ndarray:
-        """Min-max normalize scores to [0, 1]. Single-value arrays pass through
-        unchanged since there's no batch range to normalize against (this is
-        the live single-record inference path)."""
+        """Min-max normalize batch scores; preserve single-record scores."""
         if len(scores) == 1:
             return scores
-        mn, mx = scores.min(), scores.max()
-        if mx - mn < 1e-8:
+        minimum, maximum = scores.min(), scores.max()
+        if maximum - minimum < 1e-8:
             return np.zeros_like(scores)
-        return (scores - mn) / (mx - mn)
+        return (scores - minimum) / (maximum - minimum)
 
     def fuse_network_xgb(
         self,
@@ -60,26 +48,12 @@ class SentinelEnsemble:
         xgb_weight: float = 0.7,
         ae_weight: float = 0.3,
     ) -> np.ndarray:
-        """
-        Network fusion using supervised XGBoost + Autoencoder, replacing
-        the IF+AE path above. XGBoost handles known attack patterns
-        (trained on labeled data) with high precision; the Autoencoder
-        acts as a safety net for novel/unknown attack shapes it wasn't
-        explicitly trained to classify, via reconstruction error.
-
-        XGBoost's predict_proba output is already a [0,1] probability,
-        so no rescaling is needed there. Only the Autoencoder's unbounded
-        reconstruction error needs the threshold-ratio treatment.
-
-        Weighted 0.7/0.3 toward XGBoost by default since it's the stronger,
-        directly-supervised signal — AE mainly contributes when XGBoost
-        is uncertain about something structurally different from training data.
-        """
-        assert abs(xgb_weight + ae_weight - 1.0) < 1e-6, "Network weights must sum to 1.0"
+        """Fuse supervised XGBoost probabilities with AE reconstruction signal."""
+        if abs(xgb_weight + ae_weight - 1.0) >= 1e-6:
+            raise ValueError("Network weights must sum to 1.0")
 
         xgb_norm = np.clip(xgb_scores, 0, 1)
-        ae_ratio = np.clip(ae_scores / max(ae_threshold, 1e-8), 0, 3) / 3  # rescale to ~[0,1]
-
+        ae_ratio = np.clip(ae_scores / max(ae_threshold, 1e-8), 0, 3) / 3
         fused = xgb_weight * xgb_norm + ae_weight * ae_ratio
         return np.clip(fused, 0, 1)
 
@@ -92,34 +66,13 @@ class SentinelEnsemble:
         if_weight: float = 0.5,
         ae_weight: float = 0.5,
     ) -> np.ndarray:
-        """
-        Dedicated fusion for network modality: combines Isolation Forest
-        and Autoencoder scores.
+        """Fuse IF and AE network scores by calibrated threshold ratios."""
+        if abs(if_weight + ae_weight - 1.0) >= 1e-6:
+            raise ValueError("Network weights must sum to 1.0")
 
-        IMPORTANT: these two scores live on completely different scales —
-        IF's score_samples() is roughly bounded, but the Autoencoder's raw
-        MSE reconstruction error is unbounded and scales with feature
-        magnitude (network bytes_out can be in the millions). Naively
-        averaging raw values lets the AE error dominate completely.
-
-        Instead, each score is converted to a ratio relative to its own
-        model's pre-calibrated threshold: a value of 1.0 means "exactly at
-        the anomaly threshold", >1.0 means "more anomalous than typical
-        flagged cases". This keeps both signals on a comparable scale
-        without needing batch statistics (works for single-record
-        live inference, unlike min-max normalization).
-        """
-        assert abs(if_weight + ae_weight - 1.0) < 1e-6, "Network weights must sum to 1.0"
-
-        if_ratio = if_scores / max(if_threshold, 1e-8)
-        ae_ratio = ae_scores / max(ae_threshold, 1e-8)
-
-        # Clip so a single wildly-scaled feature can't blow out the fused score
-        if_ratio = np.clip(if_ratio, 0, 3)
-        ae_ratio = np.clip(ae_ratio, 0, 3)
-
+        if_ratio = np.clip(if_scores / max(if_threshold, 1e-8), 0, 3)
+        ae_ratio = np.clip(ae_scores / max(ae_threshold, 1e-8), 0, 3)
         fused = if_weight * if_ratio + ae_weight * ae_ratio
-        # Rescale so "at threshold" (ratio sum = 1.0) lands at fused = 0.5
         return np.clip(fused / 2, 0, 1)
 
     def fuse(
@@ -128,11 +81,8 @@ class SentinelEnsemble:
         ae_scores: Optional[np.ndarray] = None,
         bert_scores: Optional[np.ndarray] = None,
     ) -> np.ndarray:
-        """
-        Returns unified anomaly scores in [0, 1].
-        Any missing modality is skipped and weights are renormalized.
-        """
-        available = {}
+        """Return a unified anomaly score for any available model signals."""
+        available: dict[str, np.ndarray] = {}
         if if_scores is not None:
             available["isolation_forest"] = self._normalize(if_scores)
         if ae_scores is not None:
@@ -144,25 +94,17 @@ class SentinelEnsemble:
             raise ValueError("At least one score array must be provided.")
 
         if self.strategy == "weighted_avg":
-            total_weight = sum(self.weights[k] for k in available)
-            fused = sum(
-                self.weights[k] / total_weight * available[k]
-                for k in available
+            total_weight = sum(self.weights[key] for key in available)
+            return sum(
+                self.weights[key] / total_weight * value
+                for key, value in available.items()
             )
-
-        elif self.strategy == "max":
-            fused = np.stack(list(available.values())).max(axis=0)
-
-        elif self.strategy == "vote":
-            votes = np.stack([
-                (s >= 0.5).astype(int) for s in available.values()
-            ])
-            fused = votes.mean(axis=0)
-
-        else:
-            raise ValueError(f"Unknown strategy: {self.strategy}")
-
-        return fused
+        if self.strategy == "max":
+            return np.stack(list(available.values())).max(axis=0)
+        if self.strategy == "vote":
+            votes = np.stack([(score >= 0.5).astype(int) for score in available.values()])
+            return votes.mean(axis=0)
+        raise ValueError(f"Unknown strategy: {self.strategy}")
 
     def predict(
         self,
@@ -170,74 +112,65 @@ class SentinelEnsemble:
         ae_scores: Optional[np.ndarray] = None,
         bert_scores: Optional[np.ndarray] = None,
     ) -> np.ndarray:
-        """Returns binary predictions: 1 = anomaly, 0 = normal."""
-        fused = self.fuse(if_scores, ae_scores, bert_scores)
-        return (fused >= self.threshold).astype(int)
+        return (self.fuse(if_scores, ae_scores, bert_scores) >= self.threshold).astype(int)
 
     def fuse_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Expects df with columns: if_score, ae_score, bert_score (any subset).
-        Returns df with added columns: fused_score, is_anomaly_pred.
-        """
-        df = df.copy()
-        if_scores  = df["if_score"].values  if "if_score"   in df.columns else None
-        ae_scores  = df["ae_score"].values  if "ae_score"   in df.columns else None
-        bert_scores = df["bert_score"].values if "bert_score" in df.columns else None
-
-        df["fused_score"] = self.fuse(if_scores, ae_scores, bert_scores)
-        df["is_anomaly_pred"] = (df["fused_score"] >= self.threshold).astype(int)
-        return df
+        result = df.copy()
+        if_scores = result["if_score"].values if "if_score" in result.columns else None
+        ae_scores = result["ae_score"].values if "ae_score" in result.columns else None
+        bert_scores = result["bert_score"].values if "bert_score" in result.columns else None
+        result["fused_score"] = self.fuse(if_scores, ae_scores, bert_scores)
+        result["is_anomaly_pred"] = (result["fused_score"] >= self.threshold).astype(int)
+        return result
 
     def evaluate(self, y_true: np.ndarray, fused_scores: np.ndarray) -> dict:
         from sklearn.metrics import (
-            classification_report, roc_auc_score,
-            average_precision_score, confusion_matrix,
+            average_precision_score,
+            classification_report,
+            confusion_matrix,
+            roc_auc_score,
         )
 
         y_pred = (fused_scores >= self.threshold).astype(int)
         report = classification_report(y_true, y_pred, output_dict=True, zero_division=0)
-        cm = confusion_matrix(y_true, y_pred)
-
+        matrix = confusion_matrix(y_true, y_pred)
         try:
             roc_auc = roc_auc_score(y_true, fused_scores)
             avg_precision = average_precision_score(y_true, fused_scores)
         except ValueError:
             roc_auc = avg_precision = 0.0
 
-        metrics = {
+        return {
             "roc_auc": round(roc_auc, 4),
             "avg_precision": round(avg_precision, 4),
             "precision": round(report.get("1", {}).get("precision", 0), 4),
             "recall": round(report.get("1", {}).get("recall", 0), 4),
             "f1": round(report.get("1", {}).get("f1-score", 0), 4),
             "accuracy": round(report.get("accuracy", 0), 4),
-            "confusion_matrix": cm.tolist(),
+            "confusion_matrix": matrix.tolist(),
             "strategy": self.strategy,
             "threshold": self.threshold,
+            "network_threshold": self.network_threshold,
             "weights": self.weights,
         }
 
-        print(f"\n[Ensemble] Evaluation Results (strategy={self.strategy}):")
-        for k, v in metrics.items():
-            if k not in ("confusion_matrix", "weights"):
-                print(f"  {k:20}: {v}")
-
-        return metrics
-
-    def save(self, path: str):
+    def save(self, path: str) -> None:
+        """Persist every parameter needed to reproduce serving decisions."""
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w") as f:
-            json.dump({
-                "weights": self.weights,
-                "strategy": self.strategy,
-                "threshold": self.threshold,
-            }, f, indent=2)
-        print(f"[Ensemble] Saved to {path}")
+        with open(path, "w", encoding="utf-8") as output_file:
+            json.dump(
+                {
+                    "weights": self.weights,
+                    "strategy": self.strategy,
+                    "threshold": self.threshold,
+                    "network_threshold": self.network_threshold,
+                },
+                output_file,
+                indent=2,
+            )
 
     @classmethod
     def load(cls, path: str) -> "SentinelEnsemble":
-        with open(path) as f:
-            cfg = json.load(f)
-        obj = cls(**cfg)
-        print(f"[Ensemble] Loaded from {path}")
-        return obj
+        with open(path, encoding="utf-8") as input_file:
+            config = json.load(input_file)
+        return cls(**config)
