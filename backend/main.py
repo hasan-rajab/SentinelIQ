@@ -1,7 +1,7 @@
 """SentinelIQ FastAPI application.
 
-Serves multimodal anomaly detection, alerting, explainability, federated
-status, WebSocket streaming, health/readiness, and Prometheus telemetry.
+Serves multimodal anomaly detection, alerting, explainability, authenticated
+stream ingestion, federated status, WebSockets, health/readiness, and metrics.
 """
 
 from __future__ import annotations
@@ -85,10 +85,11 @@ app.add_middleware(
 
 install_observability(app)
 
-from backend.routes import alerts, explain, federated, stream
+from backend.routes import alerts, explain, federated, ingest, stream
 
 app.include_router(alerts.router)
 app.include_router(stream.router)
+app.include_router(ingest.router)
 app.include_router(explain.router)
 app.include_router(federated.router)
 
