@@ -2,14 +2,18 @@
 
 from __future__ import annotations
 
+import tempfile
 import unittest
 from datetime import datetime, timezone
+from pathlib import Path
 
 import numpy as np
 
 from backend.services.anomaly_rules import infer_anomaly_type
 from backend.services.anomaly_service import AnomalyService
+from backend.storage import AlertRepository
 from ml.explainability.mitre_mapper import MitreMapper
+from ml.fusion.ensemble import SentinelEnsemble
 
 
 class DummyAutoencoder:
@@ -31,7 +35,7 @@ class DummyAutoencoder:
         return np.array([self._score], dtype=float)
 
 
-def metric_service(score: float) -> AnomalyService:
+def metric_service(score: float, repository=None) -> AnomalyService:
     service = AnomalyService.__new__(AnomalyService)
     service.ae = DummyAutoencoder(score=score)
     service.bert = None
@@ -41,6 +45,7 @@ def metric_service(score: float) -> AnomalyService:
     service.ensemble = None
     service.feature_cols = service.ae.feature_cols
     service.mitre_mapper = MitreMapper()
+    service.alert_repository = repository
     service.alerts = {}
     service.stats = {
         "total_records_processed": 0,
@@ -119,10 +124,9 @@ class AnomalyRulesTests(unittest.TestCase):
 
 
 class InferenceDecisionTests(unittest.TestCase):
-    def test_ground_truth_cannot_force_alert_when_model_score_is_normal(self):
-        service = metric_service(score=0.25)
-        record = {
-            "cpu_percent": 99,
+    def _metric_record(self, cpu: float = 96.0) -> dict:
+        return {
+            "cpu_percent": cpu,
             "mem_percent": 50,
             "disk_read_mbps": 0,
             "disk_write_mbps": 0,
@@ -130,31 +134,51 @@ class InferenceDecisionTests(unittest.TestCase):
             "net_out_mbps": 1,
             "open_connections": 10,
             "process_count": 100,
-            "is_anomaly": True,
-            "anomaly_type": "cpu_spike",
         }
+
+    def test_ground_truth_cannot_force_alert_when_model_score_is_normal(self):
+        service = metric_service(score=0.25)
+        record = self._metric_record()
+        record.update({"is_anomaly": True, "anomaly_type": "cpu_spike"})
         self.assertIsNone(service.process_record(record, "metric"))
         self.assertEqual(service.stats["total_anomalies_detected"], 0)
 
     def test_model_can_alert_when_simulator_label_says_normal(self):
         service = metric_service(score=2.0)
-        record = {
-            "cpu_percent": 96,
-            "mem_percent": 50,
-            "disk_read_mbps": 0,
-            "disk_write_mbps": 0,
-            "net_in_mbps": 1,
-            "net_out_mbps": 1,
-            "open_connections": 10,
-            "process_count": 100,
-            "is_anomaly": False,
-            "anomaly_type": None,
-        }
+        record = self._metric_record()
+        record.update({"is_anomaly": False, "anomaly_type": None})
         alert = service.process_record(record, "metric")
         self.assertIsNotNone(alert)
         self.assertEqual(alert["anomaly_type"], "cpu_spike")
         self.assertNotIn("is_anomaly", alert["raw_record"])
         self.assertNotIn("anomaly_type", alert["raw_record"])
+
+    def test_alert_persists_across_repository_instances(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            db_path = Path(temp_dir) / "sentineliq.db"
+            url = f"sqlite:///{db_path}"
+            repository = AlertRepository(url)
+            service = metric_service(score=2.0, repository=repository)
+            alert = service.process_record(self._metric_record(), "metric")
+            repository.engine.dispose()
+
+            reopened = AlertRepository(url)
+            stored = reopened.get(alert["id"])
+            self.assertIsNotNone(stored)
+            self.assertEqual(stored["id"], alert["id"])
+            self.assertEqual(stored["anomaly_type"], "cpu_spike")
+            reopened.engine.dispose()
+
+
+class EnsemblePersistenceTests(unittest.TestCase):
+    def test_network_threshold_round_trips(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "ensemble.json"
+            ensemble = SentinelEnsemble(threshold=0.71, network_threshold=0.43)
+            ensemble.save(str(path))
+            loaded = SentinelEnsemble.load(str(path))
+            self.assertAlmostEqual(loaded.threshold, 0.71)
+            self.assertAlmostEqual(loaded.network_threshold, 0.43)
 
 
 if __name__ == "__main__":
