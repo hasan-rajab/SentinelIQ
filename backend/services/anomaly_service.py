@@ -1,8 +1,8 @@
 """SentinelIQ anomaly-detection service.
 
 Orchestrates model loading, modality-specific scoring, decision-model-aligned
-feature attribution, MITRE ATT&CK mapping, alert creation, and stream metrics.
-Simulator ground-truth labels never participate in live inference decisions.
+feature attribution, MITRE ATT&CK mapping, durable alert creation, and stream
+metrics. Simulator ground-truth labels never participate in live inference.
 """
 
 from __future__ import annotations
@@ -44,8 +44,10 @@ class AnomalyService:
         self,
         model_dir: str = "ml/saved_models",
         config_path: str = "configs/model_config.yaml",
+        alert_repository=None,
     ):
         self.model_dir = model_dir
+        self.alert_repository = alert_repository
         with open(config_path, encoding="utf-8") as config_file:
             self.cfg = yaml.safe_load(config_file)
 
@@ -73,7 +75,7 @@ class AnomalyService:
 
         self._load_models()
 
-        # Persistence is upgraded separately; this remains process-local for now.
+        # Fallback store for unit tests and no-database local execution.
         self.alerts: dict[str, dict] = {}
         self.stats = {
             "total_records_processed": 0,
@@ -138,26 +140,17 @@ class AnomalyService:
             return None
 
     def score_metric_record(self, record: dict) -> dict:
-        """Score a metric record using the deployed metric autoencoder."""
         if self.ae is None:
             return {"ae_score": None}
-        df = pd.DataFrame([record])
-        return {"ae_score": float(self.ae.score(df)[0])}
+        return {"ae_score": float(self.ae.score(pd.DataFrame([record]))[0])}
 
     def score_log_record(self, record: dict) -> dict:
-        """Score a log record using the deployed BERT classifier."""
         if self.bert is None:
             return {"bert_score": None}
-        df = pd.DataFrame([record])
-        return {"bert_score": float(self.bert.score(df)[0])}
+        return {"bert_score": float(self.bert.score(pd.DataFrame([record]))[0])}
 
     def process_record(self, record: dict, modality: str) -> Optional[dict]:
-        """Score one record and return an alert only when the model flags it.
-
-        The synthetic fields ``is_anomaly`` and ``anomaly_type`` are evaluation
-        labels. They are intentionally ignored for the inference decision and
-        incident classification to prevent label leakage.
-        """
+        """Score one record and create an alert only when the model flags it."""
         if modality not in {"metric", "log", "network"}:
             raise ValueError(f"Unknown modality: {modality}")
 
@@ -166,26 +159,20 @@ class AnomalyService:
         enriched_record = record
 
         if modality == "metric":
-            scores = self.score_metric_record(record)
-            score = scores["ae_score"]
+            score = self.score_metric_record(record)["ae_score"]
             if score is None or self.ae is None or self.ae.threshold is None:
                 return None
             fused = float(score)
             threshold = float(self.ae.threshold)
-            try:
-                attribution = autoencoder_reconstruction_attribution(self.ae, record)
-            except Exception:
-                logger.exception("Metric attribution failed")
 
         elif modality == "log":
-            scores = self.score_log_record(record)
-            score = scores["bert_score"]
+            score = self.score_log_record(record)["bert_score"]
             if score is None or self.bert is None or self.bert.threshold is None:
                 return None
             fused = float(score)
             threshold = float(self.bert.threshold)
 
-        else:  # network
+        else:
             df = add_network_features(pd.DataFrame([record]))
             enriched_record = df.iloc[0].to_dict()
             threshold = float(self.ensemble.network_threshold)
@@ -200,11 +187,6 @@ class AnomalyService:
                         ae_threshold=self.ae_network.threshold,
                     )[0]
                 )
-                try:
-                    attribution = xgboost_contribution_attribution(self.xgb_network, df)
-                except Exception:
-                    logger.exception("XGBoost contribution attribution failed")
-
             elif self.if_network is not None and self.ae_network is not None:
                 if_score = float(self.if_network.score(df)[0])
                 ae_score = float(self.ae_network.score(df)[0])
@@ -216,14 +198,6 @@ class AnomalyService:
                         ae_threshold=self.ae_network.threshold,
                     )[0]
                 )
-                try:
-                    attribution = autoencoder_reconstruction_attribution(
-                        self.ae_network,
-                        enriched_record,
-                    )
-                except Exception:
-                    logger.exception("Network autoencoder attribution failed")
-
             elif self.if_network is not None:
                 fused = float(self.if_network.score(df)[0])
                 threshold = float(self.if_network.threshold)
@@ -234,8 +208,27 @@ class AnomalyService:
         if fused < threshold:
             return None
 
-        self.stats["total_anomalies_detected"] += 1
+        # Attribution is generated only after the model has made its decision.
+        if modality == "metric" and self.ae is not None:
+            try:
+                attribution = autoencoder_reconstruction_attribution(self.ae, record)
+            except Exception:
+                logger.exception("Metric autoencoder attribution failed")
+        elif modality == "network" and self.xgb_network is not None:
+            try:
+                attribution = xgboost_contribution_attribution(self.xgb_network, df)
+            except Exception:
+                logger.exception("XGBoost contribution attribution failed")
+        elif modality == "network" and self.ae_network is not None:
+            try:
+                attribution = autoencoder_reconstruction_attribution(
+                    self.ae_network,
+                    enriched_record,
+                )
+            except Exception:
+                logger.exception("Network autoencoder attribution failed")
 
+        self.stats["total_anomalies_detected"] += 1
         anomaly_type = infer_anomaly_type(record, modality)
         mitre = self.mitre_mapper.map_to_dict(anomaly_type)
         top_features = attribution_top_features(attribution)
@@ -261,21 +254,16 @@ class AnomalyService:
             f"Recommended action: {mitre['recommended_action']}"
         )
 
-        # Ground-truth simulator fields are never emitted as evidence either.
         raw_record = {
             key: value
             for key, value in record.items()
             if key not in {"is_anomaly", "anomaly_type"}
         }
-
         alert_id = str(uuid.uuid4())
         alert = {
             "id": alert_id,
             "timestamp": record.get("timestamp") or datetime.now(timezone.utc).isoformat(),
-            "source": record.get(
-                "source",
-                record.get("host", record.get("src_ip", "unknown")),
-            ),
+            "source": record.get("source", record.get("host", record.get("src_ip", "unknown"))),
             "modality": modality,
             "anomaly_type": anomaly_type,
             "fused_score": round(fused, 4),
@@ -289,17 +277,20 @@ class AnomalyService:
             "recommended_action": mitre["recommended_action"],
             "top_features": top_features,
             "feature_values": feature_values,
-            # Legacy API field name retained for frontend compatibility. Values
-            # now always describe the model used by the live decision.
             "shap_attribution": attribution,
             "narrative": narrative,
             "raw_record": raw_record,
         }
 
-        self.alerts[alert_id] = alert
+        if self.alert_repository is not None:
+            self.alert_repository.save(alert)
+        else:
+            self.alerts[alert_id] = alert
         return alert
 
     def get_alerts(self, limit: int = 100, severity: Optional[str] = None) -> list:
+        if self.alert_repository is not None:
+            return self.alert_repository.list(limit=limit, severity=severity)
         alerts = list(self.alerts.values())
         if severity:
             alerts = [alert for alert in alerts if alert["severity"] == severity]
@@ -307,18 +298,20 @@ class AnomalyService:
         return alerts[:limit]
 
     def get_alert(self, alert_id: str) -> Optional[dict]:
+        if self.alert_repository is not None:
+            return self.alert_repository.get(alert_id)
         return self.alerts.get(alert_id)
 
     def acknowledge_alert(self, alert_id: str) -> bool:
+        if self.alert_repository is not None:
+            return self.alert_repository.acknowledge(alert_id)
         if alert_id not in self.alerts:
             return False
         self.alerts[alert_id]["is_acknowledged"] = True
         return True
 
     def get_stats(self) -> dict:
-        elapsed = (
-            datetime.now(timezone.utc) - self.stats["active_since"]
-        ).total_seconds()
+        elapsed = (datetime.now(timezone.utc) - self.stats["active_since"]).total_seconds()
         processed = self.stats["total_records_processed"]
         anomalies = self.stats["total_anomalies_detected"]
         return {
