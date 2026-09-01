@@ -18,10 +18,11 @@ from fastapi.middleware.cors import CORSMiddleware
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 
+from backend.observability import install_observability, set_model_status
 from backend.schemas.models import HealthResponse
 from backend.services.alert_service import AlertService
 from backend.services.anomaly_service import AnomalyService
-from backend.observability import install_observability, set_model_status
+from backend.storage import AlertRepository
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO").upper(),
@@ -31,6 +32,7 @@ logger = logging.getLogger("sentineliq")
 
 anomaly_service: Optional[AnomalyService] = None
 alert_service: Optional[AlertService] = None
+alert_repository: Optional[AlertRepository] = None
 
 
 def _cors_origins() -> list[str]:
@@ -43,12 +45,17 @@ def _cors_origins() -> list[str]:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global anomaly_service, alert_service
+    global anomaly_service, alert_service, alert_repository
 
-    logger.info("Starting SentinelIQ and loading inference models")
+    database_url = os.getenv("SENTINELIQ_DATABASE_URL", "sqlite:///./sentineliq.db")
+    logger.info("Starting SentinelIQ; initializing alert repository")
+    alert_repository = AlertRepository(database_url)
+
+    logger.info("Loading inference models")
     anomaly_service = AnomalyService(
         model_dir=os.getenv("SENTINELIQ_MODEL_DIR", "ml/saved_models"),
         config_path=os.getenv("SENTINELIQ_MODEL_CONFIG", "configs/model_config.yaml"),
+        alert_repository=alert_repository,
     )
     alert_service = AlertService(anomaly_service)
     set_model_status(anomaly_service.models_loaded)
@@ -56,13 +63,15 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    if alert_repository is not None:
+        alert_repository.engine.dispose()
     logger.info("SentinelIQ shutdown complete")
 
 
 app = FastAPI(
     title="SentinelIQ API",
     description="Multimodal AI anomaly detection platform for IT Ops & Cybersecurity",
-    version="1.1.0",
+    version="1.2.0",
     lifespan=lifespan,
 )
 
@@ -71,7 +80,7 @@ app.add_middleware(
     allow_origins=_cors_origins(),
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+    allow_headers=["Authorization", "Content-Type", "X-Request-ID", "X-API-Key"],
 )
 
 install_observability(app)
@@ -88,7 +97,7 @@ app.include_router(federated.router)
 def root():
     models_loaded = anomaly_service.models_loaded if anomaly_service else {}
     set_model_status(models_loaded)
-    return HealthResponse(status="ok", models_loaded=models_loaded)
+    return HealthResponse(status="ok", models_loaded=models_loaded, version=app.version)
 
 
 @app.get("/health", response_model=HealthResponse)
@@ -98,17 +107,21 @@ def health():
     return HealthResponse(
         status="ok" if anomaly_service else "starting",
         models_loaded=models_loaded,
+        version=app.version,
     )
 
 
 @app.get("/ready", response_model=HealthResponse)
 def readiness():
     models_loaded = anomaly_service.models_loaded if anomaly_service else {}
-    ready = bool(anomaly_service) and any(models_loaded.values())
+    database_ready = bool(alert_repository and alert_repository.ping())
+    inference_ready = bool(anomaly_service) and any(models_loaded.values())
+    ready = database_ready and inference_ready
     set_model_status(models_loaded)
     return HealthResponse(
         status="ok" if ready else "starting",
         models_loaded=models_loaded,
+        version=app.version,
     )
 
 
