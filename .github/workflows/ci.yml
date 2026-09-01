@@ -35,7 +35,10 @@ jobs:
           pip install -r backend/requirements.txt
 
       - name: Compile Python sources
-        run: python -m compileall -q backend ml data federated
+        run: python -m compileall -q backend ml data federated tests
+
+      - name: Run inference-integrity regression tests
+        run: python -m unittest discover -s tests -p 'test_*.py' -v
 
       - name: Verify API imports
         run: python -c "from backend.main import app; assert app.title == 'SentinelIQ API'"
