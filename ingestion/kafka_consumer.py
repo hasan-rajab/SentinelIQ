@@ -2,7 +2,12 @@
 
 Consumes telemetry envelopes, validates their shape, and forwards them to the
 backend's authenticated /ingest endpoint. Offsets are committed only after the
-backend accepts the record, providing at-least-once delivery semantics.
+backend accepts the record. If forwarding fails, the consumer rewinds that
+partition to the failed offset so a later commit cannot skip the record.
+
+Malformed payloads are treated as poison records: they are logged and committed
+rather than retried forever. A production deployment would normally publish
+those payloads to a dead-letter topic for investigation.
 """
 
 from __future__ import annotations
@@ -13,7 +18,7 @@ import os
 import time
 from urllib import error, request
 
-from confluent_kafka import Consumer, KafkaError
+from confluent_kafka import Consumer, KafkaError, TopicPartition
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger("sentineliq.kafka-consumer")
@@ -38,6 +43,26 @@ def _forward(envelope: dict) -> bool:
         return False
 
 
+def _rewind_failed_message(consumer: Consumer, message) -> None:
+    """Re-read a failed record before allowing later offsets to be committed.
+
+    `poll()` advances the consumer's local position even when auto-commit is
+    disabled. Merely declining to commit the failed message is therefore not
+    enough: a later successful commit on the same partition could otherwise
+    advance the committed offset beyond the failed record. Seeking back to the
+    record preserves the advertised at-least-once forwarding contract for
+    valid telemetry.
+    """
+
+    consumer.seek(
+        TopicPartition(
+            message.topic(),
+            message.partition(),
+            message.offset(),
+        )
+    )
+
+
 def main() -> None:
     consumer = Consumer(
         {
@@ -48,6 +73,11 @@ def main() -> None:
         }
     )
     consumer.subscribe(TOPICS)
+
+    retry_delay_seconds = max(
+        0.1,
+        float(os.getenv("SENTINELIQ_FORWARD_RETRY_SECONDS", "2")),
+    )
 
     try:
         while True:
@@ -73,8 +103,9 @@ def main() -> None:
             if _forward(envelope):
                 consumer.commit(message=message, asynchronous=False)
             else:
+                _rewind_failed_message(consumer, message)
                 # Avoid a tight retry loop during transient backend failures.
-                time.sleep(2)
+                time.sleep(retry_delay_seconds)
     finally:
         consumer.close()
 
