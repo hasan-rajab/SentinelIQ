@@ -1,289 +1,185 @@
 # SentinelIQ
 
-**Production-style multimodal anomaly intelligence for IT operations and cybersecurity.**
+**Multimodal anomaly intelligence for security operations — designed to help analysts turn noisy telemetry into prioritized, explainable investigations.**
 
-SentinelIQ is an end-to-end AI engineering project that ingests logs, system metrics, and network flows, scores them with modality-specific ML models, generates model-aligned explanations, maps inferred incidents to MITRE ATT&CK, persists alerts, and exposes the system through a FastAPI service and Next.js SOC dashboard.
+SentinelIQ is a production-style AI engineering project for logs, system metrics and network flows. It combines modality-specific ML models, streaming ingestion, explainability, MITRE ATT&CK context, durable alert storage and a SOC-facing application.
 
-The repository is intentionally explicit about one distinction: **synthetic evaluation labels are never allowed into the serving decision path.**
+The business problem is straightforward:
 
-## What this project demonstrates
+> **Security teams do not need another model score. They need a defensible path from raw telemetry → anomaly evidence → incident context → analyst action.**
 
-- multimodal ML serving: metrics, logs, and network telemetry
-- supervised + unsupervised anomaly detection
-- label-leakage-safe inference
-- streaming ingestion with Kafka
-- durable PostgreSQL alert persistence
-- model-aligned feature attribution
-- MITRE ATT&CK incident mapping
-- FastAPI + WebSocket serving
-- Prometheus observability + Grafana
-- Dockerized local infrastructure
-- CI regression gates for ML integrity and application builds
-- federated-learning experiments with Flower
+SentinelIQ is designed around that path.
 
-## Production architecture
+> **Scope:** benchmark data in this repository is synthetic. Results are useful for regression and engineering validation, not claims of real-enterprise detection performance.
 
-```text
-                         ┌──────────────────────────────┐
-                         │ Synthetic demo generators    │
-                         │ (labels stripped at source)  │
-                         └──────────────┬───────────────┘
-                                        │
-                                        ▼
-┌────────────────────────────────────────────────────────────────────────────┐
-│ Kafka                                                                      │
-│ sentineliq.logs  |  sentineliq.metrics  |  sentineliq.network             │
-└──────────────────────────────┬─────────────────────────────────────────────┘
-                               │ manual offset commit
-                               ▼
-                     ┌──────────────────────┐
-                     │ Kafka consumer       │
-                     └──────────┬───────────┘
-                                │ authenticated POST /ingest
-                                ▼
-                     ┌──────────────────────┐
-                     │ FastAPI serving      │
-                     └──────────┬───────────┘
-                                │
-        ┌───────────────────────┼────────────────────────┐
-        ▼                       ▼                        ▼
-┌───────────────┐      ┌────────────────┐      ┌──────────────────┐
-│ Metrics       │      │ Logs           │      │ Network          │
-│ Autoencoder   │      │ BERT           │      │ XGBoost + AE     │
-└───────┬───────┘      └───────┬────────┘      └────────┬─────────┘
-        └───────────────────────┼─────────────────────────┘
-                                ▼
-                    model score + calibrated threshold
-                                │
-                                ▼
-                  model-aligned feature attribution
-                                │
-                                ▼
-                  telemetry-derived incident category
-                                │
-                                ▼
-                       MITRE ATT&CK mapping
-                                │
-                      ┌─────────┴──────────┐
-                      ▼                    ▼
-                PostgreSQL          Prometheus metrics
-                      │                    │
-                      ▼                    ▼
-               Next.js dashboard       Grafana
-```
+---
 
-A separate WebSocket demo path can feed generated records directly through the same anomaly service for interactive visualization.
+## Executive view
 
-## ML integrity contract
+| Security-operations need | SentinelIQ approach |
+|---|---|
+| Prioritize suspicious telemetry | Modality-specific anomaly scoring across metrics, logs and network flows |
+| Explain why something was flagged | Model-aligned feature attribution instead of generic explanations |
+| Add security context | Telemetry-derived incident classification mapped to MITRE ATT&CK |
+| Avoid invalid ML evidence | Synthetic ground-truth labels are excluded from the serving decision path |
+| Support streaming operations | Kafka ingestion with manual commits and persistent alerts |
+| Operate the service | FastAPI, PostgreSQL, Prometheus, Grafana, Docker and CI |
 
-The simulator includes `is_anomaly` and `anomaly_type` fields so models can be trained and evaluated. Those fields are **ground truth, not features**.
+---
 
-SentinelIQ enforces this contract at multiple boundaries:
+## Business value
 
-1. The Kafka producer removes both fields before publishing telemetry.
-2. `/ingest` strips them again as defense in depth.
-3. `AnomalyService` makes the alert decision only from the deployed model score and its calibrated threshold.
-4. The incident category is inferred from observed telemetry after the model decision; it is not copied from the simulator label.
-5. Raw alert evidence excludes the simulator labels.
-6. CI contains regression tests proving a positive simulator label cannot force an alert below threshold and a model can alert when a simulator label says normal.
+SentinelIQ is designed to improve the **quality of analyst attention**, not to claim autonomous threat response.
 
-## Decision-model-aligned explanations
+The value hypothesis is:
 
-Explanations describe the model that actually produced the serving decision:
+1. identify unusual telemetry earlier;
+2. preserve the evidence behind the alert;
+3. explain which observed features drove the decision;
+4. map the event into recognizable security context;
+5. let analysts investigate through a consistent application surface.
 
-- **Metrics:** per-feature autoencoder reconstruction error.
-- **Network, XGBoost path:** booster-native per-feature contribution values.
-- **Network, AE fallback:** per-feature autoencoder reconstruction error.
-- **Logs:** BERT score + telemetry-derived incident classification; no fabricated numeric feature attribution is emitted.
+In a real deployment, success should be measured with operational KPIs such as alert precision, analyst time-to-triage, escalation quality, false-positive burden and detection coverage — not model accuracy alone.
 
-The API retains the legacy `shap_attribution` response field for frontend compatibility, but its values are now generated from the deployed decision model rather than an unrelated explainer.
+---
 
-## Stack
-
-| Layer | Technology |
-| --- | --- |
-| ML | XGBoost, PyTorch Autoencoder, Hugging Face BERT, Isolation Forest |
-| Feature engineering | Pandas, NumPy, scikit-learn |
-| Streaming | Apache Kafka / Confluent Python client |
-| Serving | FastAPI, WebSockets, Pydantic |
-| Persistence | PostgreSQL via SQLAlchemy; SQLite fallback for local execution |
-| Frontend | Next.js 14, TypeScript, Tailwind CSS |
-| Observability | Prometheus metrics, structured request logs, request IDs, Grafana |
-| Containers | Docker, Docker Compose |
-| CI | GitHub Actions |
-| Federated experiments | Flower |
-
-## Quick start
-
-### Prerequisites
-
-- Docker with Compose
-- Git
-
-### Run the full demo stack
-
-```bash
-cp .env.example .env
-```
-
-Change the placeholder PostgreSQL, ingestion, and Grafana credentials in `.env`, then run:
-
-```bash
-docker compose --profile demo up --build
-```
-
-The `demo` profile starts a synthetic telemetry producer. For infrastructure without generated traffic, omit `--profile demo`.
-
-### Local services
-
-| Service | Address |
-| --- | --- |
-| SOC dashboard | http://localhost:3000 |
-| FastAPI | http://localhost:8000 |
-| OpenAPI docs | http://localhost:8000/docs |
-| Readiness | http://localhost:8000/ready |
-| Prometheus metrics | http://localhost:8000/metrics |
-| Prometheus UI | http://localhost:9090 |
-| Grafana | http://localhost:3001 |
-| Kafka host listener | localhost:29092 |
-
-Grafana automatically provisions Prometheus as its default datasource.
-
-## Run without Docker
-
-The backend defaults to SQLite when `SENTINELIQ_DATABASE_URL` is not set.
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r backend/requirements.txt
-uvicorn backend.main:app --reload --port 8000
-```
-
-Then:
-
-```bash
-cd frontend
-npm ci
-npm run dev
-```
-
-## Model artifacts
-
-Large artifacts, particularly BERT weights, are intentionally excluded from Git. Place trained/downloaded artifacts under `ml/saved_models/`.
-
-Expected artifacts can include:
+## Architecture
 
 ```text
-ml/saved_models/
-├── isolation_forest_metrics_*
-├── isolation_forest_network_*
-├── autoencoder_metrics_*
-├── autoencoder_network_*
-├── xgboost_network_*
-├── bert_log/
-├── bert_log_meta.json
-└── ensemble_config.json
+Logs / metrics / network telemetry
+              ↓
+            Kafka
+              ↓
+       ingestion consumer
+              ↓
+           FastAPI
+        ┌─────┼─────┐
+        ↓     ↓     ↓
+     Metrics  Logs  Network
+       AE     BERT  XGBoost + AE
+        └─────┼─────┘
+              ↓
+ model score + calibrated threshold
+              ↓
+ model-aligned explanation
+              ↓
+ telemetry-derived incident category
+              ↓
+       MITRE ATT&CK context
+        ┌─────┴─────┐
+        ↓           ↓
+   PostgreSQL   Prometheus
+        ↓           ↓
+ Next.js SOC     Grafana
+ dashboard
 ```
 
-Missing optional artifacts degrade the relevant modality and are reported through model readiness state instead of crashing the complete API.
+### ML integrity boundary
 
-## Testing and CI
+The synthetic simulator contains `is_anomaly` and `anomaly_type` for training/evaluation, but those fields are **not allowed to determine production-style serving decisions**.
 
-The CI pipeline validates:
+SentinelIQ enforces that at multiple boundaries:
 
-```text
-Python source compilation
-        ↓
-Inference-integrity regression tests
-        ↓
-FastAPI import contract
+- producer strips synthetic labels before publishing;
+- `/ingest` strips them again;
+- alert decisions come from deployed-model scores and calibrated thresholds;
+- incident categories are inferred from observed telemetry;
+- raw alert evidence excludes simulator labels;
+- regression tests prove the label cannot force or suppress the serving decision.
 
-Next.js dependency install
-        ↓
-Production frontend build
+---
 
-Docker Compose configuration validation
-```
+## Verified engineering evidence
 
-Run the backend integrity tests locally with:
+**Reference CI:** SentinelIQ CI run #18  
+**Date:** 10 September 2026  
+**Conclusion:** success
 
-```bash
-python -m unittest discover -s tests -p 'test_*.py' -v
-```
+The backend-integrity job completed:
 
-## Synthetic benchmark results
+- Python source compilation
+- **8/8 inference-integrity tests**
+- FastAPI import validation
 
-The following results came from fresh simulator-generated data that was separate from the model training samples used in the original experiments:
+The same workflow also completed:
+
+- frontend production build
+- Docker Compose configuration validation
+
+### Synthetic benchmark
 
 | Modality | Model | Recall | Precision | F1 |
-| --- | --- | ---: | ---: | ---: |
+|---|---|---:|---:|---:|
 | Metrics | Autoencoder | 100.00% | 97.62% | 0.988 |
 | Network | XGBoost | 85.85% | 100.00% | 0.924 |
 | Network | XGBoost + Autoencoder | 99.06% | 100.00% | 0.995 |
 | Logs | BERT | 100.00% | 100.00% | 1.000 |
 
-These numbers are **synthetic upper-bound research benchmarks, not production performance claims**. The generators have cleaner class separation than real enterprise telemetry. Real evaluation should use external datasets and organization-specific traffic before any operational deployment.
+These are **synthetic upper-bound research benchmarks**. The generated data has cleaner separation than real security telemetry, so external datasets and organization-specific traffic would be required before operational use.
 
-## Known limitations
+---
 
-- The checked-in benchmark data is synthetic.
-- Large BERT/model artifacts must be supplied separately.
-- MITRE mapping is heuristic after anomaly detection; it is not a substitute for analyst investigation.
-- The federated-learning module is an experiment and is not part of the primary serving data plane.
-- Local Compose credentials are development defaults and must be changed before exposure outside a trusted machine.
-- A production internet-facing deployment should place the dashboard and analyst APIs behind enterprise identity/IAM rather than relying on local Compose defaults.
+## Why the architecture matters
 
-## Repository map
+### Supervised + unsupervised signals
+Known attack patterns and novel behavior require different detection assumptions. The network path therefore combines XGBoost and autoencoder signals instead of relying on a single model family.
 
-```text
-SentinelIQ/
-├── backend/
-│   ├── routes/              # alerts, explainability, ingest, stream, federated status
-│   ├── services/            # inference, alert access, anomaly rules
-│   ├── observability.py     # request metrics/logging
-│   └── storage.py           # PostgreSQL/SQLite alert repository
-├── data/simulated/          # demo telemetry generators
-├── ingestion/               # Kafka producer and consumer
-├── ml/
-│   ├── models/
-│   ├── features/
-│   ├── fusion/
-│   ├── explainability/
-│   ├── training/
-│   └── saved_models/
-├── federated/
-├── frontend/
-├── ops/
-│   ├── prometheus/
-│   └── grafana/
-├── tests/
-├── configs/
-├── docker-compose.yml
-└── .github/workflows/ci.yml
+### Explanation follows the decision model
+- metrics: per-feature reconstruction error;
+- network / XGBoost: booster-native feature contributions;
+- network / AE fallback: reconstruction error;
+- logs: BERT score plus telemetry-derived incident classification.
+
+The system does not fabricate numeric attribution where the deployed model does not support it.
+
+### Streaming reliability
+Kafka offsets are committed only after the ingestion API accepts the record, supporting at-least-once processing behavior in the demo architecture.
+
+---
+
+## Technology
+
+**ML:** XGBoost · PyTorch Autoencoder · Hugging Face BERT · Isolation Forest  
+**Streaming:** Apache Kafka  
+**Serving:** FastAPI · WebSockets  
+**Persistence:** PostgreSQL · SQLite fallback  
+**Frontend:** Next.js · TypeScript  
+**Observability:** Prometheus · Grafana · structured logs  
+**Delivery:** Docker · Docker Compose · GitHub Actions  
+**Security context:** MITRE ATT&CK  
+**Experiments:** Flower federated-learning module
+
+---
+
+## Run the demo
+
+```bash
+cp .env.example .env
+docker compose --profile demo up --build
 ```
 
-## Design decisions worth discussing in an interview
+The demo profile generates synthetic telemetry. Remove the profile for infrastructure without generated traffic.
 
-**Why not let the synthetic label determine alerts?**  
-Because that converts evaluation ground truth into a serving feature and produces invalid performance evidence. The serving path is now isolated from those labels.
+Key surfaces:
 
-**Why combine supervised and unsupervised network models?**  
-XGBoost is useful for known attack patterns while the autoencoder contributes a structurally different novelty signal. The two scores are calibrated onto compatible ranges before fusion.
+- SOC dashboard: `http://localhost:3000`
+- FastAPI/OpenAPI: `http://localhost:8000/docs`
+- readiness: `http://localhost:8000/ready`
+- metrics: `http://localhost:8000/metrics`
+- Grafana: `http://localhost:3001`
 
-**Why manual Kafka commits?**  
-The consumer commits an offset only after `/ingest` accepts the event, giving the demo at-least-once processing behavior instead of silently losing records when the backend is unavailable.
+---
 
-**Why PostgreSQL plus SQLite?**  
-PostgreSQL models the deployed architecture; SQLite keeps local development and tests frictionless without creating a second persistence abstraction.
+## What I would change for a real SOC
 
-**Why separate `/health` and `/ready`?**  
-Liveness answers whether the process is running. Readiness also checks that the database is reachable and at least one inference artifact is available.
+A production deployment would require:
 
-## Roadmap
+- enterprise identity and analyst RBAC;
+- calibrated evaluation on external and organization-specific data;
+- model registry and controlled release process;
+- drift/performance monitoring;
+- hardened secrets/networking;
+- SIEM/SOAR integration;
+- incident-response operating model and rollback procedures.
 
-The highest-value next experiments are external benchmark evaluation, online drift monitoring, production IAM, model registry/release automation, and cloud infrastructure-as-code.
-
-## License
-
-MIT License.
+SentinelIQ is therefore best read as evidence of **AI security architecture, ML-integrity thinking and operational system design**, not autonomous cyber defense.
