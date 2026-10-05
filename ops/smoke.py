@@ -18,8 +18,11 @@ def main():
     password_hash = subprocess.check_output([
         "docker", "run", "--rm", "--entrypoint", "caddy", image,
         "hash-password", "--plaintext", password], text=True).strip()
+    volume = 'sentineliq-ci-state-' + secrets.token_hex(6)
+    subprocess.run(['docker', 'volume', 'create', volume], check=True, stdout=subprocess.DEVNULL)
     container = subprocess.check_output([
         "docker", "run", "-d", "--name", "sentineliq-production-ci",
+        "--user", "0", "--mount", f"type=volume,source={volume},target=/app/state",
         "-p", "127.0.0.1:18080:8080",
         "-e", "PORT=8080", "-e", "SENTINELIQ_USERNAME=ci",
         "-e", "SENTINELIQ_CORS_ORIGINS=https://sentinel.example.test",
@@ -36,7 +39,7 @@ def main():
         req = Request(origin + path, data=None if data is None else json.dumps(data).encode(), headers=headers)
         with urlopen(req, timeout=5) as response:
             return response.status, response.read()
-    try:
+    def wait_ready():
         deadline = time.monotonic() + 120
         while True:
             try:
@@ -48,6 +51,8 @@ def main():
             if time.monotonic() > deadline:
                 raise RuntimeError("Production container did not become ready within 120 seconds")
             time.sleep(1)
+    try:
+        wait_ready()
         for path in ("/", "/api/alerts"):
             try:
                 request(path, authenticated=False)
@@ -83,12 +88,16 @@ def main():
             assert response.split(b"\r\n")[0].endswith(b"101 Switching Protocols")
             remainder = response.split(b"\r\n\r\n", 1)[1]
             assert remainder or connection.recv(4096)
-        print("Production image smoke passed: readiness, login, models, ingestion, persisted alert and authenticated WebSocket.")
+        subprocess.run(['docker', 'restart', container], check=True, stdout=subprocess.DEVNULL)
+        wait_ready()
+        assert json.loads(request('/api/alerts')[1])['total'] > 0
+        print("Production image smoke passed: mounted-volume readiness, login, models, ingestion, restart persistence and authenticated WebSocket.")
     except BaseException:
         subprocess.run(["docker", "logs", container], check=False)
         raise
     finally:
         subprocess.run(["docker", "rm", "-f", container], check=False, stdout=subprocess.DEVNULL)
+        subprocess.run(['docker', 'volume', 'rm', volume], check=False, stdout=subprocess.DEVNULL)
 
 
 if __name__ == "__main__":

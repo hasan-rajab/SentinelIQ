@@ -11,7 +11,7 @@ FROM caddy:2 AS ingress
 FROM python:3.12-slim-bookworm
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 \
     ENVIRONMENT=production NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 \
-    SENTINELIQ_DATABASE_URL=sqlite:////app/data/sentineliq.db \
+    SENTINELIQ_DATABASE_URL=sqlite:////app/state/sentineliq.db \
     SENTINELIQ_MODEL_DIR=/app/ml/saved_models
 WORKDIR /app
 RUN apt-get update \
@@ -26,7 +26,7 @@ COPY --from=ingress /usr/bin/caddy /usr/local/bin/caddy
 COPY --chown=sentineliq:sentineliq . .
 COPY --from=frontend --chown=sentineliq:sentineliq /build/.next frontend/.next
 COPY --from=frontend --chown=sentineliq:sentineliq /build/node_modules frontend/node_modules
-RUN mkdir -p /app/data && chown -R sentineliq:sentineliq /app/data
+RUN mkdir -p /app/state && chown -R sentineliq:sentineliq /app/state
 USER sentineliq
 EXPOSE 8080
 CMD ["python", "ops/serve.py"]

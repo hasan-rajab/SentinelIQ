@@ -17,7 +17,7 @@ def main():
     port = int(os.environ.get("PORT", "8080"))
     if not 1024 <= port <= 65535:
         sys.exit("PORT must be between 1024 and 65535")
-    data = Path("/app/data")
+    data = Path("/app/state")
     data.mkdir(parents=True, exist_ok=True)
     if os.geteuid() == 0:
         for base, dirs, files in os.walk(data):

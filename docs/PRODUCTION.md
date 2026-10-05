@@ -23,12 +23,14 @@ HTTPS. Neither internal service is exposed directly.
 | `SENTINELIQ_USERNAME` | Browser login name, default `owner` |
 | `SENTINELIQ_PASSWORD_HASH` | bcrypt output of `caddy hash-password` |
 | `SENTINELIQ_INGEST_API_KEY` | Separate generated random secret, at least 32 characters |
-| `SENTINELIQ_DATABASE_URL` | `sqlite:////app/data/sentineliq.db` for this single-replica profile |
+| `SENTINELIQ_DATABASE_URL` | `sqlite:////app/state/sentineliq.db` for this single-replica profile |
 | `SENTINELIQ_CORS_ORIGINS` | Exact deployed HTTPS origin; also checks browser WebSocket origin |
 | `RAILWAY_RUN_UID` | `0` for volume initialization; the entrypoint then drops to UID 10001 |
 
 Store the password hash and ingestion key in host secret settings. Attach a
-volume at `/app/data`; alerts survive restarts and redeployments. Use one
+volume at `/app/state`; alerts survive restarts and redeployments. `/app/data`
+contains application simulation modules and must remain part of the image.
+Use one
 replica with SQLite. The included optional Compose stack remains available
 for PostgreSQL and Kafka; this web deployment does not silently provision them.
 

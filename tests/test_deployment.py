@@ -40,7 +40,7 @@ def test_production_requires_credentials_and_persistence():
     with pytest.raises(RuntimeError):
         validate_production({"ENVIRONMENT": "production"})
     validate_production(dict(ENVIRONMENT="production", SENTINELIQ_INGEST_API_KEY="a"*64,
-        SENTINELIQ_DATABASE_URL="sqlite:////app/data/test.db",
+        SENTINELIQ_DATABASE_URL="sqlite:////app/state/test.db",
         SENTINELIQ_CORS_ORIGINS="https://sentinel.example.com",
         SENTINELIQ_PASSWORD_HASH="$2a$14$"+"a"*53))
 
