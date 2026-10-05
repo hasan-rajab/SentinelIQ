@@ -24,6 +24,7 @@ HTTPS. Neither internal service is exposed directly.
 | `SENTINELIQ_PASSWORD_HASH` | bcrypt output of `caddy hash-password` |
 | `SENTINELIQ_INGEST_API_KEY` | Separate generated random secret, at least 32 characters |
 | `SENTINELIQ_DATABASE_URL` | `sqlite:////app/data/sentineliq.db` for this single-replica profile |
+| `SENTINELIQ_CORS_ORIGINS` | Exact deployed HTTPS origin; also checks browser WebSocket origin |
 | `RAILWAY_RUN_UID` | `0` for volume initialization; the entrypoint then drops to UID 10001 |
 
 Store the password hash and ingestion key in host secret settings. Attach a

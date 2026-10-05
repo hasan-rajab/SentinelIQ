@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import re
 from collections.abc import Mapping
+from urllib.parse import urlparse
 
 
 def validate_production(env: Mapping[str, str] | None = None) -> None:
@@ -16,6 +17,9 @@ def validate_production(env: Mapping[str, str] | None = None) -> None:
         errors.append("SENTINELIQ_INGEST_API_KEY must be a generated secret of at least 32 characters")
     if not env.get("SENTINELIQ_DATABASE_URL"):
         errors.append("SENTINELIQ_DATABASE_URL is required")
+    origins = [s.strip() for s in env.get("SENTINELIQ_CORS_ORIGINS", "").split(",") if s.strip()]
+    if not origins or any(urlparse(s).scheme != "https" or not urlparse(s).hostname for s in origins):
+        errors.append("SENTINELIQ_CORS_ORIGINS must contain explicit HTTPS origins")
     if not re.fullmatch(r"[a-zA-Z0-9_-]{1,64}", env.get("SENTINELIQ_USERNAME", "owner")):
         errors.append("SENTINELIQ_USERNAME must be a simple account name")
     if not re.fullmatch(r"\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}", env.get("SENTINELIQ_PASSWORD_HASH", "")):

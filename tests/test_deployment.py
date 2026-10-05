@@ -7,6 +7,7 @@ from backend import main
 from backend.routes.ingest import _verify_api_key
 from ml.models.bert_log import SentinelBertLog
 from ops.runtime import validate_production
+from starlette.websockets import WebSocketDisconnect
 
 
 def test_readiness_requires_a_decision_model_and_returns_503(monkeypatch):
@@ -40,4 +41,13 @@ def test_production_requires_credentials_and_persistence():
         validate_production({"ENVIRONMENT": "production"})
     validate_production(dict(ENVIRONMENT="production", SENTINELIQ_INGEST_API_KEY="a"*64,
         SENTINELIQ_DATABASE_URL="sqlite:////app/data/test.db",
+        SENTINELIQ_CORS_ORIGINS="https://sentinel.example.com",
         SENTINELIQ_PASSWORD_HASH="$2a$14$"+"a"*53))
+
+
+def test_browser_stream_refuses_a_foreign_origin():
+    client = TestClient(main.app)
+    with pytest.raises(WebSocketDisconnect) as exc:
+        with client.websocket_connect("/stream/live", headers={"origin": "https://foreign.example.com"}):
+            pass
+    assert exc.value.code == 1008

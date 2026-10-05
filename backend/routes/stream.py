@@ -58,6 +58,11 @@ async def stream_live(websocket: WebSocket):
     Streams simulated multimodal data through the detection pipeline.
     Sends every record processed, with alert details attached if anomalous.
     """
+    from backend.main import _cors_origins
+    origin = websocket.headers.get("origin")
+    if origin and origin not in _cors_origins():
+        await websocket.close(code=1008)
+        return
     await manager.connect(websocket)
     service = get_anomaly_service()
     tick = 0

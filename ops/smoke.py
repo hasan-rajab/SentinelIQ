@@ -5,6 +5,7 @@ import base64
 import json
 import secrets
 import subprocess
+import socket
 import time
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -21,6 +22,7 @@ def main():
         "docker", "run", "-d", "--name", "sentineliq-production-ci",
         "-p", "127.0.0.1:18080:8080",
         "-e", "PORT=8080", "-e", "SENTINELIQ_USERNAME=ci",
+        "-e", "SENTINELIQ_CORS_ORIGINS=https://sentinel.example.test",
         "-e", "SENTINELIQ_PASSWORD_HASH=" + password_hash,
         "-e", "SENTINELIQ_INGEST_API_KEY=" + ingest_key, image], text=True).strip()
     origin = "http://127.0.0.1:18080"
@@ -41,7 +43,7 @@ def main():
                 status, body = request("/ready", authenticated=False)
                 if status == 200:
                     break
-            except (HTTPError, URLError, TimeoutError):
+            except (HTTPError, URLError, TimeoutError, ConnectionError):
                 pass
             if time.monotonic() > deadline:
                 raise RuntimeError("Production container did not become ready within 120 seconds")
@@ -68,7 +70,20 @@ def main():
         result = json.loads(request("/api/ingest", data=payload, api_key=ingest_key)[1])
         assert result["alert_generated"]
         assert json.loads(request("/api/alerts")[1])["total"] > 0
-        print("Production image smoke passed: readiness, login, models, ingestion and persisted alert.")
+        with socket.create_connection(("127.0.0.1", 18080), timeout=10) as connection:
+            websocket_key = base64.b64encode(secrets.token_bytes(16)).decode()
+            handshake = ("GET /api/stream/live HTTP/1.1\r\nHost: 127.0.0.1:18080\r\n"
+                "Upgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\n"
+                f"Sec-WebSocket-Key: {websocket_key}\r\nAuthorization: {auth}\r\n"
+                "Origin: https://sentinel.example.test\r\n\r\n")
+            connection.sendall(handshake.encode())
+            response = b""
+            while b"\r\n\r\n" not in response:
+                response += connection.recv(4096)
+            assert response.split(b"\r\n")[0].endswith(b"101 Switching Protocols")
+            remainder = response.split(b"\r\n\r\n", 1)[1]
+            assert remainder or connection.recv(4096)
+        print("Production image smoke passed: readiness, login, models, ingestion, persisted alert and authenticated WebSocket.")
     except BaseException:
         subprocess.run(["docker", "logs", container], check=False)
         raise
