@@ -63,7 +63,7 @@ def page():
 
 @router.get('/api/demo/report')
 def report():
-    data=json.loads((ROOT/'reports/metric_benchmark/report.json').read_text())
+    data=json.loads((ROOT/'docs/benchmarks/metric_report.json').read_text())
     return data
 
 

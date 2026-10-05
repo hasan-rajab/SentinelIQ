@@ -13,7 +13,7 @@ The separate measured benchmark contains 605 synthetic records with chronologica
 train/validation/test splits. Test positives: nine. TP8, FP0, FN1, TN112; F1 .941, recall .889.
 Threshold selection uses validation only. The missed memory-leak record is shown, rather than
 hidden by aggregate performance. This benchmark does not validate the deployed model, BERT,
-autoencoder, multimodal ensemble or real incident outcomes. See `reports/metric_benchmark/report.json`.
+autoencoder, multimodal ensemble or real incident outcomes. See `docs/benchmarks/metric_report.json`.
 
 Production-image smoke checks public scoring without credentials, unchanged alert counts after
 inference, and continued 401 responses on private UI/alert routes.
