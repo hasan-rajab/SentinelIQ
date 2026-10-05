@@ -194,3 +194,8 @@ SentinelIQ is therefore best read as evidence of **AI security architecture, ML-
 ## Production deployment
 
 Deployment configuration and launch requirements are documented in [docs/PRODUCTION.md](docs/PRODUCTION.md). The deployment has not yet been verified live.
+# Public demo
+
+[Explore the anomaly lab](https://sentineliq-production.up.railway.app/demo) — visitors can adjust
+telemetry, obtain a live model score and inspect the separately labelled synthetic benchmark.
+No owner password is needed for the lab. [Scope and access boundaries](docs/PUBLIC_DEMO.md).

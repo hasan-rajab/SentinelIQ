@@ -8,6 +8,10 @@
     handle @probe {
         reverse_proxy 127.0.0.1:8000
     }
+    @public_demo path /demo /api/demo/report /api/demo/score
+    handle @public_demo {
+        reverse_proxy 127.0.0.1:8000
+    }
 
     handle {
         basic_auth {

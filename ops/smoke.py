@@ -60,6 +60,14 @@ def main():
             except HTTPError as exc:
                 assert exc.code == 401
         assert request("/")[0] == 200
+        assert request('/demo',authenticated=False)[0]==200
+        assert json.loads(request('/api/demo/report',authenticated=False)[1])['test']['records']==121
+        alert_count=json.loads(request('/api/alerts')[1])['total']
+        public_sample=dict(cpu_percent=32,mem_percent=54,disk_read_mbps=12,disk_write_mbps=8,
+            net_in_mbps=24,net_out_mbps=18,open_connections=110,process_count=85)
+        public_result=json.loads(request('/api/demo/score',data=public_sample,authenticated=False)[1])
+        assert isinstance(public_result['flagged'],bool)
+        assert json.loads(request('/api/alerts')[1])['total']==alert_count
         model_state = json.loads(request("/api/health")[1])["models_loaded"]
         assert model_state["autoencoder"] and model_state["isolation_forest_network"]
         assert not model_state["bert_log"]

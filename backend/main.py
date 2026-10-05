@@ -87,13 +87,14 @@ app.add_middleware(
 
 install_observability(app)
 
-from backend.routes import alerts, explain, federated, ingest, stream
+from backend.routes import alerts, explain, federated, ingest, stream, public_demo
 
 app.include_router(alerts.router)
 app.include_router(stream.router)
 app.include_router(ingest.router)
 app.include_router(explain.router)
 app.include_router(federated.router)
+app.include_router(public_demo.router)
 
 
 @app.get("/", response_model=HealthResponse)
