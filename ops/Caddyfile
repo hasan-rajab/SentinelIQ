@@ -1,0 +1,23 @@
+{
+    admin off
+    auto_https off
+}
+
+:{$PORT:8080} {
+    @probe path /health /ready
+    handle @probe {
+        reverse_proxy 127.0.0.1:8000
+    }
+
+    handle {
+        basic_auth {
+            {$SENTINELIQ_USERNAME:owner} {$SENTINELIQ_PASSWORD_HASH}
+        }
+        handle_path /api/* {
+            reverse_proxy 127.0.0.1:8000
+        }
+        handle {
+            reverse_proxy 127.0.0.1:3000
+        }
+    }
+}

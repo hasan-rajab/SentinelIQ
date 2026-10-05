@@ -190,3 +190,7 @@ A production deployment would require:
 
 SentinelIQ is therefore best read as evidence of **AI security architecture, ML-integrity thinking and operational system design**, not autonomous cyber defense.
 
+
+## Production deployment
+
+Deployment configuration and launch requirements are documented in [docs/PRODUCTION.md](docs/PRODUCTION.md). The deployment has not yet been verified live.

@@ -20,6 +20,8 @@ class IngestRequest(BaseModel):
 def _verify_api_key(provided_key: str | None) -> None:
     expected = os.getenv("SENTINELIQ_INGEST_API_KEY")
     if not expected:
+        if os.getenv("ENVIRONMENT", "development").lower() == "production":
+            raise HTTPException(status_code=503, detail="Ingestion authentication is not configured")
         # Local non-container execution remains frictionless. Deployments should
         # always set SENTINELIQ_INGEST_API_KEY; Compose does so by default.
         return
