@@ -34,12 +34,23 @@ jobs:
           python -m pip install --upgrade pip
           pip install --index-url https://download.pytorch.org/whl/cpu torch==2.4.0
           pip install -r backend/requirements.txt
+          pip install pytest
 
       - name: Compile Python sources
         run: python -m compileall -q backend ml data federated ingestion tests
 
-      - name: Run inference-integrity regression tests
-        run: python -m unittest discover -s tests -p 'test_*.py' -v
+      - name: Run inference and benchmark regression tests
+        run: python -m pytest -q tests
+
+      - name: Generate held-out synthetic metric benchmark
+        run: python -m ml.training.benchmark_metrics
+
+      - name: Upload benchmark evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: sentineliq-synthetic-metric-benchmark
+          path: reports/metric_benchmark/
+
 
       - name: Verify API imports
         run: python -c "from backend.main import app; assert app.title == 'SentinelIQ API'"
