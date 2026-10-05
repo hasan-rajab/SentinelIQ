@@ -46,3 +46,6 @@ __pycache__/
 __pycache__/
 ml/saved_models/*.json
 ml/saved_models/*.joblib
+
+# Local benchmark outputs; selected synthetic evidence lives under docs/benchmarks.
+reports/

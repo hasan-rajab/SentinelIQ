@@ -195,6 +195,8 @@ class SentinelBertLog:
 
     @classmethod
     def load(cls, save_dir: str, name: str = "bert_log") -> "SentinelBertLog":
+        if not (Path(save_dir) / name / "config.json").is_file():
+            raise FileNotFoundError(f"BERT model artifacts are not installed: {save_dir}/{name}")
         with open(f"{save_dir}/{name}_meta.json") as f:
             meta = json.load(f)
         obj = cls(config=meta["config"])

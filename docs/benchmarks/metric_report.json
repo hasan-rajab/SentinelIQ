@@ -1,0 +1,203 @@
+{
+  "provenance": "committed synthetic metric stream; record-level labels, not real security incidents",
+  "data_path": "data/simulated/metrics.jsonl",
+  "dataset_sha256": "fd37c7c9a346773fc4c4cb7baf9995be2b7f49919abe9e3db36a11a42c10dd18",
+  "records_total": 605,
+  "partitions": {
+    "train": {
+      "records": 363,
+      "positive_records": 37,
+      "first_source_row": 1,
+      "last_source_row": 363,
+      "start_utc": "2026-06-21T05:57:57.005137+00:00",
+      "end_utc": "2026-06-21T05:58:33.234010+00:00"
+    },
+    "validation": {
+      "records": 121,
+      "positive_records": 10,
+      "first_source_row": 364,
+      "last_source_row": 484,
+      "start_utc": "2026-06-21T05:58:33.234034+00:00",
+      "end_utc": "2026-06-21T05:58:45.329323+00:00"
+    },
+    "test": {
+      "records": 121,
+      "positive_records": 9,
+      "first_source_row": 485,
+      "last_source_row": 605,
+      "start_utc": "2026-06-21T05:58:45.329339+00:00",
+      "end_utc": "2026-06-21T05:58:57.403710+00:00"
+    }
+  },
+  "features": [
+    "cpu_percent",
+    "mem_percent",
+    "disk_read_mbps",
+    "disk_write_mbps",
+    "net_in_mbps",
+    "net_out_mbps",
+    "open_connections",
+    "process_count"
+  ],
+  "model": "Isolation Forest",
+  "threshold": 0.43747663520390906,
+  "threshold_selection": "max validation F1, then precision, then higher threshold; frozen for test",
+  "test": {
+    "records": 121,
+    "positive_records": 9,
+    "negative_records": 112,
+    "predicted_positive_records": 8,
+    "tp": 8,
+    "fp": 0,
+    "fn": 1,
+    "tn": 112,
+    "precision": 1.0,
+    "recall": 0.8888888888888888,
+    "f1": 0.9411764705882353,
+    "false_positive_rate": 0.0,
+    "accuracy": 0.9917355371900827,
+    "roc_auc": 1.0,
+    "average_precision": 1.0
+  },
+  "always_normal_baseline": {
+    "records": 121,
+    "positive_records": 9,
+    "negative_records": 112,
+    "predicted_positive_records": 0,
+    "tp": 0,
+    "fp": 0,
+    "fn": 9,
+    "tn": 112,
+    "precision": 0.0,
+    "recall": 0.0,
+    "f1": 0.0,
+    "false_positive_rate": 0.0,
+    "accuracy": 0.9256198347107438
+  },
+  "by_host": [
+    {
+      "host": "host-1",
+      "records": 24,
+      "positive_records": 1,
+      "negative_records": 23,
+      "predicted_positive_records": 1,
+      "tp": 1,
+      "fp": 0,
+      "fn": 0,
+      "tn": 23,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "false_positive_rate": 0.0,
+      "accuracy": 1.0
+    },
+    {
+      "host": "host-2",
+      "records": 24,
+      "positive_records": 4,
+      "negative_records": 20,
+      "predicted_positive_records": 3,
+      "tp": 3,
+      "fp": 0,
+      "fn": 1,
+      "tn": 20,
+      "precision": 1.0,
+      "recall": 0.75,
+      "f1": 0.8571428571428571,
+      "false_positive_rate": 0.0,
+      "accuracy": 0.9583333333333334
+    },
+    {
+      "host": "host-3",
+      "records": 24,
+      "positive_records": 2,
+      "negative_records": 22,
+      "predicted_positive_records": 2,
+      "tp": 2,
+      "fp": 0,
+      "fn": 0,
+      "tn": 22,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "false_positive_rate": 0.0,
+      "accuracy": 1.0
+    },
+    {
+      "host": "host-4",
+      "records": 24,
+      "positive_records": 2,
+      "negative_records": 22,
+      "predicted_positive_records": 2,
+      "tp": 2,
+      "fp": 0,
+      "fn": 0,
+      "tn": 22,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "false_positive_rate": 0.0,
+      "accuracy": 1.0
+    },
+    {
+      "host": "host-5",
+      "records": 25,
+      "positive_records": 0,
+      "negative_records": 25,
+      "predicted_positive_records": 0,
+      "tp": 0,
+      "fp": 0,
+      "fn": 0,
+      "tn": 25,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "false_positive_rate": 0.0,
+      "accuracy": 1.0
+    }
+  ],
+  "by_anomaly_type": [
+    {
+      "type": "cpu_spike",
+      "positive_records": 2,
+      "detected_records": 2,
+      "recall": 1.0
+    },
+    {
+      "type": "disk_flood",
+      "positive_records": 1,
+      "detected_records": 1,
+      "recall": 1.0
+    },
+    {
+      "type": "memory_leak",
+      "positive_records": 1,
+      "detected_records": 0,
+      "recall": 0.0
+    },
+    {
+      "type": "network_exfiltration",
+      "positive_records": 1,
+      "detected_records": 1,
+      "recall": 1.0
+    },
+    {
+      "type": "process_bomb",
+      "positive_records": 4,
+      "detected_records": 4,
+      "recall": 1.0
+    }
+  ],
+  "environment": {
+    "python": "3.12.14",
+    "numpy": "2.3.5",
+    "pandas": "2.2.3",
+    "scikit_learn": "1.8.0"
+  },
+  "notes": [
+    "Training sees observed features only; validation labels choose threshold; test labels only score results.",
+    "The short simulated stream cannot establish real incident accuracy or production generalization.",
+    "This standalone metric benchmark does not evaluate BERT, autoencoder or the production ensemble.",
+    "Host/type segmentation diagnoses missed records; it does not establish causal incident root causes."
+  ]
+}

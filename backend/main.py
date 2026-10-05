@@ -13,7 +13,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
@@ -23,6 +23,7 @@ from backend.schemas.models import HealthResponse
 from backend.services.alert_service import AlertService
 from backend.services.anomaly_service import AnomalyService
 from backend.storage import AlertRepository
+from ops.runtime import validate_production
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO").upper(),
@@ -46,6 +47,7 @@ def _cors_origins() -> list[str]:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global anomaly_service, alert_service, alert_repository
+    validate_production()
 
     database_url = os.getenv("SENTINELIQ_DATABASE_URL", "sqlite:///./sentineliq.db")
     logger.info("Starting SentinelIQ; initializing alert repository")
@@ -85,13 +87,14 @@ app.add_middleware(
 
 install_observability(app)
 
-from backend.routes import alerts, explain, federated, ingest, stream
+from backend.routes import alerts, explain, federated, ingest, stream, public_demo
 
 app.include_router(alerts.router)
 app.include_router(stream.router)
 app.include_router(ingest.router)
 app.include_router(explain.router)
 app.include_router(federated.router)
+app.include_router(public_demo.router)
 
 
 @app.get("/", response_model=HealthResponse)
@@ -113,11 +116,17 @@ def health():
 
 
 @app.get("/ready", response_model=HealthResponse)
-def readiness():
+def readiness(response: Response):
     models_loaded = anomaly_service.models_loaded if anomaly_service else {}
     database_ready = bool(alert_repository and alert_repository.ping())
-    inference_ready = bool(anomaly_service) and any(models_loaded.values())
+    inference_ready = bool(anomaly_service) and (
+        bool(anomaly_service.ae is not None and anomaly_service.ae.threshold is not None)
+        or bool(anomaly_service.bert is not None and anomaly_service.bert.threshold is not None)
+        or bool(anomaly_service.if_network is not None and anomaly_service.if_network.threshold is not None)
+        or bool(anomaly_service.xgb_network is not None and anomaly_service.ae_network is not None)
+    )
     ready = database_ready and inference_ready
+    response.status_code = 200 if ready else 503
     set_model_status(models_loaded)
     return HealthResponse(
         status="ok" if ready else "starting",

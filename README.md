@@ -14,6 +14,12 @@ SentinelIQ is designed around that path.
 
 ---
 
+## Reproducible metric benchmark
+
+Run `python -m ml.training.benchmark_metrics` for a fresh chronological train/validation/test evaluation on the committed **synthetic** metric stream. The current held-out result is **0.941 record F1 on 121 test records**, including **9 positive records: 8 TP / 0 FP / 1 FN**. Per-host/type breakdowns, the source hash, threshold-selection policy and environment versions are retained in the [benchmark report](docs/benchmarks/metric_report.json).
+
+See [scope, reproduction and limitations](docs/METRIC_BENCHMARK.md). This small simulated benchmark does not measure real security-incident accuracy or the complete BERT/autoencoder/ensemble stack.
+
 ## Executive view
 
 | Security-operations need | SentinelIQ approach |
@@ -183,3 +189,13 @@ A production deployment would require:
 - incident-response operating model and rollback procedures.
 
 SentinelIQ is therefore best read as evidence of **AI security architecture, ML-integrity thinking and operational system design**, not autonomous cyber defense.
+
+
+## Production deployment
+
+Deployment configuration and launch requirements are documented in [docs/PRODUCTION.md](docs/PRODUCTION.md). The deployment has not yet been verified live.
+# Public demo
+
+[Explore the anomaly lab](https://sentineliq-production.up.railway.app/demo) — visitors can adjust
+telemetry, obtain a live model score and inspect the separately labelled synthetic benchmark.
+No owner password is needed for the lab. [Scope and access boundaries](docs/PUBLIC_DEMO.md).
